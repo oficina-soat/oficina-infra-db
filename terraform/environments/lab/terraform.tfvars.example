@@ -1,0 +1,43 @@
+region        = "us-east-1"
+eks_cluster_name = "simple-eks"
+db_identifier = "oficina-postgres-lab"
+db_name       = "app"
+db_username   = "oficina_master"
+
+instance_class            = "db.t4g.micro"
+allocated_storage         = 20
+max_allocated_storage     = 40
+backup_retention_period   = 7
+backup_window             = "03:00-04:00"
+maintenance_window        = "sun:04:00-sun:05:00"
+final_snapshot_identifier = "oficina-postgres-lab-final"
+publicly_accessible       = true
+
+# Opcional quando eks_cluster_name estiver definido.
+# vpc_id = "vpc-xxxxxxxx"
+#
+# Opcional quando eks_cluster_name estiver definido.
+# No laboratorio, reuse as public_subnet_ids do projeto oficina-infra-k8s.
+# subnet_ids = [
+#   "subnet-aaaaaaaa",
+#   "subnet-bbbbbbbb",
+# ]
+
+# Opcional quando auto_allow_eks_cluster_security_group=true e eks_cluster_name estiver definido.
+# Se quiser restringir ainda mais, informe explicitamente os SGs da aplicacao.
+allowed_security_group_ids = []
+
+# Para acesso da sua maquina, substitua pelo seu IP publico com /32.
+# Exemplo: ["203.0.113.10/32"]
+allowed_cidr_blocks = []
+
+multi_az                       = false
+monitoring_interval            = 0
+performance_insights_enabled   = false
+enabled_cloudwatch_logs_exports = []
+create_alarms                  = false
+
+tags = {
+  Environment = "lab"
+  Owner       = "academico"
+}
