@@ -25,11 +25,6 @@ variable "allowed_cidr_blocks" {
   default     = []
 
   validation {
-    condition     = length(var.allowed_cidr_blocks) > 0 || length(var.allowed_security_group_ids) > 0
-    error_message = "Informe ao menos um CIDR ou security group autorizado a conectar no RDS."
-  }
-
-  validation {
     condition     = !contains(var.allowed_cidr_blocks, "0.0.0.0/0")
     error_message = "Nao exponha o banco para 0.0.0.0/0."
   }

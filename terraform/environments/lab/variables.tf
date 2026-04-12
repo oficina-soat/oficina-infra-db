@@ -66,11 +66,6 @@ variable "max_allocated_storage" {
   type        = number
   description = "Limite maximo em GB para autoscaling de storage."
   default     = 40
-
-  validation {
-    condition     = var.max_allocated_storage >= var.allocated_storage
-    error_message = "max_allocated_storage deve ser maior ou igual a allocated_storage."
-  }
 }
 
 variable "storage_type" {
@@ -141,11 +136,6 @@ variable "final_snapshot_identifier" {
   type        = string
   description = "Identificador do snapshot final quando skip_final_snapshot=false."
   default     = null
-
-  validation {
-    condition     = var.skip_final_snapshot || var.final_snapshot_identifier != null
-    error_message = "Informe final_snapshot_identifier quando skip_final_snapshot=false."
-  }
 }
 
 variable "vpc_id" {
