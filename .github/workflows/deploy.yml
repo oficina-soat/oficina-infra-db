@@ -63,6 +63,8 @@ jobs:
               if [[ "${raw_key}" == TF_VAR_* ]]; then
                 export_key="TF_VAR_${raw_key#TF_VAR_}"
                 export_key="TF_VAR_${export_key,,}"
+              elif [[ "${raw_key}" =~ ^[A-Z][A-Z0-9_]*$ ]] && [[ ! "${raw_key}" =~ ^(AWS_|TF_BACKEND_|TERRAFORM_) ]]; then
+                export_key="TF_VAR_${raw_key,,}"
               fi
 
               delimiter="__GITHUB_ENV_${export_key}_$(date +%s%N)__"
@@ -75,7 +77,10 @@ jobs:
               jq -r '
                 to_entries[]
                 | select(
-                    (.key | test("^(AWS_|TF_VAR_|TF_BACKEND_|TERRAFORM_)"))
+                    (
+                      (.key | test("^(AWS_|TF_VAR_|TF_BACKEND_|TERRAFORM_)"))
+                      or (.key | test("^[A-Z][A-Z0-9_]*$"))
+                    )
                     and .value != null
                     and (.value | tostring | length) > 0
                   )
