@@ -84,10 +84,6 @@ resource "aws_db_instance" "this" {
     Name = var.db_identifier
   })
 
-  lifecycle {
-    prevent_destroy = true
-  }
-
   depends_on = [
     aws_cloudwatch_log_group.this,
     aws_iam_role_policy_attachment.rds_enhanced_monitoring,

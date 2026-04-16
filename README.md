@@ -1,216 +1,153 @@
 # oficina-db-infra
 
-Infraestrutura Terraform da base PostgreSQL da Oficina com baseline voltado para produção enxuta, priorizando baixo custo para laboratório acadêmico.
+Infraestrutura AWS/Terraform da base PostgreSQL da Oficina.
 
-O projeto provisiona um Amazon RDS PostgreSQL com:
+O repositório foi alinhado com `oficina-infra-k8s` para usar os mesmos nomes de infra compartilhada do laboratório e a mesma família de GitHub Actions, mas continua independente:
 
-- `db.t4g.micro` e `Single-AZ` por default para reduzir custo fixo
-- backups automáticos, janela de backup e janela de manutenção
-- deletion protection, snapshot final e `prevent_destroy`
-- senha master gerenciada pelo AWS Secrets Manager
-- parameter group com SSL forçado e logs de queries lentas
-- autoscaling de storage habilitado
-- monitoramento pago opcional: log exports, Enhanced Monitoring, Performance Insights e alarmes
+- se a infra compartilhada do lab já existir, este projeto a reutiliza
+- se ela não existir, este projeto cria o que precisa para o banco subir
+- recursos compartilhados fora do state deste repo não são recriados nem destruídos
 
-## O que este projeto não cria
+## O que este projeto gerencia
 
-- VPC, sub-redes e rotas
-- SNS topics para alarmes
-- cluster Kubernetes
-- migrations de schema da aplicação
+- Amazon RDS PostgreSQL
+- security group, subnet group e parameter group do banco
+- VPC/subnets do lab quando a rede compartilhada ainda não existir
+- bucket S3 compartilhado do Terraform quando ele precisar ser criado por este state
 
-## Pré-requisitos
+## Convenções padronizadas com o repo k8s
 
-- Terraform `>= 1.6`
-- AWS CLI autenticada
-- bucket S3 e tabela DynamoDB apenas se quiser backend remoto
-- VPC existente com pelo menos duas sub-redes já usadas pelo cluster; no laboratório atual, o projeto `oficina-infra-k8s` cria apenas duas sub-redes públicas
-- `kubectl`, se quiser publicar o secret da aplicação no cluster
-- `psql`, se quiser executar bootstrap administrativo no banco
+- nome padrão da infra compartilhada: `eks-lab`
+- bucket compartilhado: `tf-shared-<shared_infra_name>-<account-id>-<region>`
+- chave default do state deste repo: `oficina/lab/database/terraform.tfstate`
+- cluster EKS compartilhado esperado: `eks-lab`
+- banco padrão: `oficina-postgres-lab`
 
 ## Estrutura
 
-O repositório segue um layout em diretórios:
+- `terraform/modules/network`: mesma convenção de rede do repo `oficina-infra-k8s`
+- `terraform/modules/terraform_shared_data_bucket`: mesmo módulo de bucket compartilhado do repo `oficina-infra-k8s`
+- `terraform/modules/rds-postgres`: módulo do banco
+- `terraform/environments/lab`: root module do ambiente
+- `scripts/ci-terraform.sh`: apply/destroy com bootstrap e reuso do backend remoto
+- `scripts/ci-deploy.sh`: apply do Terraform e operações opcionais de bootstrap do usuário da aplicação/secret no cluster
+- `scripts/cleanup-orphan-db.sh`: cleanup manual para recursos órfãos sem state remoto
 
-- `terraform/modules/rds-postgres`: módulo reutilizável com os recursos AWS do banco
-- `terraform/environments/lab`: root module do ambiente atual, com provider, inputs e outputs
-- `scripts/`: automações operacionais que leem outputs do root module
+## Comportamento de reuso e criação
 
-## State do Terraform
+O root module resolve a infraestrutura nesta ordem:
 
-Por default, o projeto usa backend local. Sem bucket S3, basta inicializar normalmente:
+1. usa `vpc_id` e `subnet_ids` explícitos, se informados
+2. tenta reutilizar a VPC nomeada como `<shared_infra_name>-vpc`
+3. se não encontrar a VPC e `create_network_if_missing=true`, cria uma rede nova com os mesmos nomes usados no repo k8s
 
-```bash
-terraform -chdir=terraform/environments/lab init
-```
+Para acesso do EKS ao banco, o projeto tenta reutilizar security groups tagueados com `aws:eks:cluster-name=<eks_cluster_name>`. Se eles não existirem, informe `allowed_security_group_ids` ou `allowed_cidr_blocks`.
 
-Se quiser backend remoto em `s3`, gere dois arquivos locais a partir dos exemplos:
+## Configuração local
 
-```bash
-cp terraform/environments/lab/backend.tf.example terraform/environments/lab/backend.tf
-cp terraform/environments/lab/backend.hcl.example terraform/environments/lab/backend.hcl
-```
-
-Depois ajuste `backend.hcl` e inicialize:
-
-```bash
-terraform -chdir=terraform/environments/lab init -reconfigure -backend-config=backend.hcl
-```
-
-## Configuração
-
-Use `terraform.tfvars.example` como base:
+Use o exemplo de variáveis:
 
 ```bash
 cp terraform/environments/lab/terraform.tfvars.example terraform/environments/lab/terraform.tfvars
 ```
 
-Variáveis principais:
+Campos principais:
 
-- `eks_cluster_name`: nome do cluster criado pelo projeto `oficina-infra-k8s`; quando informado, este projeto descobre `vpc_id`, `subnet_ids` e adiciona o security group primário do EKS automaticamente
-- `db_identifier`: identificador do RDS
-- `db_name`: nome do banco
-- `db_username`: usuário administrador inicial; não use este usuário na aplicação
-- `instance_class`: default `db.t4g.micro`
-- `allocated_storage` e `max_allocated_storage`: capacidade inicial e autoscaling
-- `vpc_id` e `subnet_ids`: rede onde o RDS será provisionado; no laboratório, podem ser omitidos se `eks_cluster_name` estiver definido
-- `allowed_security_group_ids`: origem real da aplicação; no laboratório, pode ser omitido se você aceitar o security group primário do EKS como origem
-- `allowed_cidr_blocks`: CIDRs externos autorizados a acessar a porta `5432`; para acesso local, informe seu IP público com `/32`
-- `final_snapshot_identifier`: snapshot final obrigatório ao destruir
-- `multi_az`: deixe `false` no laboratório e avalie `true` apenas se disponibilidade for mais importante que custo
-- `monitoring_interval`, `performance_insights_enabled`, `enabled_cloudwatch_logs_exports` e `create_alarms`: opcionais para observabilidade paga
-- o baseline do laboratório limita o autoscaling de storage a `40 GB` e evita logs verbosos de conexão/desconexão
+- `shared_infra_name`: prefixo da infra compartilhada. Default `eks-lab`
+- `eks_cluster_name`: nome do cluster EKS compartilhado. Default `eks-lab`
+- `db_identifier`: default `oficina-postgres-lab`
+- `create_network_if_missing`: cria a rede do lab se ela ainda não existir
+- `vpc_id` e `subnet_ids`: forçam uso de rede específica
+- `allowed_security_group_ids` e `allowed_cidr_blocks`: controlam quem acessa a porta `5432`
+- `create_terraform_shared_data_bucket`: só deve ficar `true` quando este state for gerenciar o bucket compartilhado
 
-Com o `oficina-infra-k8s` atual, o caminho padrão de laboratório fica:
+## State do Terraform
 
-- subir a rede e o cluster pelo repositório `oficina-infra-k8s`
-- informar apenas `eks_cluster_name` neste repositório
-- manter `publicly_accessible = true` se precisar conectar da sua máquina e preencher `allowed_cidr_blocks` com seu IP público
+Local:
 
-## Aplicação da infraestrutura
+```bash
+terraform -chdir=terraform/environments/lab init
+```
+
+Remoto em S3:
+
+```bash
+cp terraform/environments/lab/backend.s3.tf.example terraform/environments/lab/backend.tf
+cp terraform/environments/lab/backend.hcl.example terraform/environments/lab/backend.hcl
+terraform -chdir=terraform/environments/lab init -reconfigure -backend-config=backend.hcl
+```
+
+Nos workflows do GitHub Actions, o script `scripts/ci-terraform.sh` faz bootstrap local do bucket quando necessário, migra o state para S3 e reutiliza o bucket compartilhado quando ele já existir.
+
+## Apply
 
 ```bash
 terraform -chdir=terraform/environments/lab plan -var-file=terraform.tfvars
 terraform -chdir=terraform/environments/lab apply -var-file=terraform.tfvars
 ```
 
-## Deploy com GitHub Actions
+## Destroy seguro
 
-O workflow [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) executa em `push` para a branch `main`.
+O baseline mantém `deletion_protection = true`.
 
-O job usa o GitHub Environment `hml` para centralizar `vars` e `secrets` e faz o acesso à AWS com credenciais clássicas do AWS CLI via `aws-actions/configure-aws-credentials`.
+Para destroy manual:
 
-Valores esperados no Environment:
+```bash
+terraform -chdir=terraform/environments/lab destroy \
+  -var-file=terraform.tfvars \
+  -var='deletion_protection=false'
+```
 
-- `AWS_REGION`: região da AWS usada pelo provider e pela autenticação do runner
-- `AWS_ACCESS_KEY_ID`: credencial AWS em `secrets`
-- `AWS_SECRET_ACCESS_KEY`: credencial AWS em `secrets`
-- `AWS_SESSION_TOKEN`: opcional, mas necessário se o laboratório entregar credenciais temporárias
-- `TERRAFORM_VERSION`: opcional; se omitido, o workflow usa `1.6.6`
-- `TERRAFORM_ROOT_DIR`: opcional; se omitido, o workflow usa `terraform/environments/lab`
+Nos GitHub Actions, o destroy faz verificações extras antes de continuar:
 
-As variáveis `TF_BACKEND_*` são opcionais e só precisam existir se você quiser usar backend remoto em `s3` no GitHub Actions:
+- bloqueia se subnet group ou security group do banco ainda estiverem em uso por outros RDS
+- bloqueia se a VPC gerenciada por este repo ainda estiver em uso por clusters EKS, outros RDS ou ENIs externos ao banco
+- bloqueia se o bucket compartilhado tiver objetos fora do state deste projeto
 
-- `TF_BACKEND_BUCKET`: bucket S3 do backend remoto do Terraform
-- `TF_BACKEND_KEY`: chave do state dentro do bucket
-- `TF_BACKEND_DYNAMODB_TABLE`: tabela DynamoDB de lock do state
-- `TF_BACKEND_REGION`: opcional; se omitido, usa `AWS_REGION`
-- `TF_BACKEND_ENCRYPT`: opcional
-- `TF_BACKEND_KMS_KEY_ID`: opcional
+## GitHub Actions
 
-As entradas do Terraform devem ser publicadas como `TF_VAR_*` no próprio Environment:
+Workflows disponíveis:
 
-- valores sensíveis em `secrets`, por exemplo `TF_VAR_DB_USERNAME`
-- valores não sensíveis em `vars`, por exemplo `TF_VAR_REGION`, `TF_VAR_EKS_CLUSTER_NAME` e `TF_VAR_DB_IDENTIFIER`
-- listas e mapas podem ser enviados em JSON, por exemplo `TF_VAR_SUBNET_IDS=["subnet-a","subnet-b"]`
+- `.github/workflows/deploy-lab.yml`
+- `.github/workflows/terraform-apply-lab.yml`
+- `.github/workflows/terraform-destroy-lab.yml`
+- `.github/workflows/cleanup-orphan-db-lab.yml`
 
-O workflow exporta automaticamente para o runner todas as chaves com prefixo `AWS_`, `TF_BACKEND_`, `TF_VAR_` e `TERRAFORM_` vindas do Environment selecionado. Antes de chamar o Terraform, ele converte o trecho após `TF_VAR_` para minúsculas, então `TF_VAR_DB_IDENTIFIER` vira `TF_VAR_db_identifier`.
+Todos usam o GitHub Environment `lab` e o mesmo grupo de `concurrency` do repo `oficina-infra-k8s`.
 
-Sem `TF_BACKEND_*`, o runner usa backend local apenas durante aquela execução. Para deploys recorrentes, mantenha o backend remoto configurado para preservar o state entre runs.
+Detalhes de variáveis e secrets: [docs/github-actions.md](docs/github-actions.md)
 
-Se o laboratório recriar as credenciais a cada nova sessão, atualize os `secrets` `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e, quando houver, `AWS_SESSION_TOKEN` antes do merge que vai disparar o deploy.
+## Operações opcionais
 
-Saídas principais:
-
-- `db_endpoint`
-- `db_port`
-- `db_name`
-- `db_master_user_secret_arn`
-- `db_alarm_names`
-
-Por default, `db_alarm_names` vira uma lista vazia porque alarmes ficam desabilitados para manter o custo mínimo.
-
-## Fluxo de credenciais
-
-O usuário master do RDS fica no AWS Secrets Manager. Esse secret é apenas administrativo.
-
-Para criar ou atualizar um usuário próprio da aplicação:
+Bootstrap do usuário da aplicação:
 
 ```bash
 STORE_IN_SECRETS_MANAGER=true \
-APP_SECRET_NAME="oficina/prod/database/app" \
+APP_SECRET_NAME="oficina/lab/database/app" \
 ./scripts/bootstrap-app-user.sh
 ```
 
-O script:
-
-- lê a credencial master do output `db_master_user_secret_arn`
-- cria ou atualiza o role `oficina_app`
-- aplica grants de runtime na schema `public`
-- opcionalmente grava a credencial da aplicação no Secrets Manager
-
-## Publicação do secret no Kubernetes
-
-Publique no cluster apenas a credencial da aplicação, nunca a senha master:
+Publicação do secret no cluster:
 
 ```bash
-DB_SECRET_ARN="oficina/prod/database/app" \
+DB_SECRET_ARN="oficina/lab/database/app" \
+EKS_CLUSTER_NAME="eks-lab" \
+UPDATE_KUBECONFIG=true \
 ./scripts/apply-k8s-secret.sh
 ```
 
-O script suporta `OUTPUT_ONLY=true` para apenas renderizar o manifesto.
-
-## Schema e carga de dados
-
-`sql/import.sql` voltou a conter uma carga inicial para laboratório e demonstração.
-
-- o arquivo popula usuários, clientes, veículos, ordens de serviço, peças e serviços
-- o processo não é idempotente e pode falhar se os dados já existirem
-- para uso realmente produtivo, prefira migrations versionadas e seeds revisados por ambiente
-
-Se ainda precisar executar SQL administrativo:
+Carga inicial:
 
 ```bash
-DB_SECRET_ARN="oficina/prod/database/app" \
+DB_SECRET_ARN="oficina/lab/database/app" \
 IMPORT_FILE="sql/import.sql" \
 ./scripts/run-rds-import.sh
 ```
 
-## Validações recomendadas
+## Validação local
 
 ```bash
 terraform fmt -check -recursive terraform
 terraform -chdir=terraform/environments/lab validate
 bash -n scripts/*.sh
 ```
-
-## Perfil de custo
-
-Defaults pensados para laboratório acadêmico:
-
-- `db.t4g.micro`
-- `Single-AZ`
-- `20 GB` gp3 com autoscaling limitado a `40 GB`
-- `7 dias` de backup
-- sem alarmes
-- sem log export para CloudWatch
-- sem Enhanced Monitoring
-- sem Performance Insights
-
-Esses defaults preservam:
-
-- criptografia em repouso
-- acesso público restrito por security group/CIDR
-- proteção contra delete
-- snapshot final
-- secret master gerenciada

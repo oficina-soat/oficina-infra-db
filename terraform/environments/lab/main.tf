@@ -1,27 +1,91 @@
-data "aws_eks_cluster" "selected" {
-  count = var.eks_cluster_name != null ? 1 : 0
-  name  = var.eks_cluster_name
+data "aws_caller_identity" "current" {}
+
+data "aws_vpcs" "shared" {
+  count = var.vpc_id == null ? 1 : 0
+
+  tags = {
+    Name = "${local.shared_infra_name}-vpc"
+  }
+}
+
+data "aws_subnets" "shared" {
+  count = var.vpc_id == null && length(var.subnet_ids) == 0 && local.existing_shared_vpc_id != null ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [local.existing_shared_vpc_id]
+  }
+}
+
+data "aws_security_groups" "eks_cluster" {
+  count = var.auto_allow_eks_cluster_security_group && local.preexisting_vpc_id != null && local.resolved_eks_cluster_name != null ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [local.preexisting_vpc_id]
+  }
+
+  filter {
+    name   = "tag:aws:eks:cluster-name"
+    values = [local.resolved_eks_cluster_name]
+  }
 }
 
 locals {
-  eks_vpc_id = try(data.aws_eks_cluster.selected[0].vpc_config[0].vpc_id, null)
-  eks_subnet_ids = try(
-    data.aws_eks_cluster.selected[0].vpc_config[0].subnet_ids,
-    [],
+  shared_infra_name = coalesce(var.shared_infra_name, var.eks_cluster_name, "eks-lab")
+  resolved_eks_cluster_name = coalesce(
+    var.eks_cluster_name,
+    var.shared_infra_name,
+    "eks-lab",
   )
-  eks_cluster_security_group_ids = var.auto_allow_eks_cluster_security_group ? compact([
-    try(data.aws_eks_cluster.selected[0].vpc_config[0].cluster_security_group_id, null),
-  ]) : []
-
-  resolved_vpc_id         = var.vpc_id != null ? var.vpc_id : local.eks_vpc_id
-  resolved_subnet_ids     = length(var.subnet_ids) > 0 ? var.subnet_ids : local.eks_subnet_ids
+  azs                     = length(var.azs) > 0 ? slice(var.azs, 0, 2) : ["${var.region}a", "${var.region}b"]
+  existing_shared_vpc_ids = try(data.aws_vpcs.shared[0].ids, [])
+  existing_shared_vpc_id  = length(local.existing_shared_vpc_ids) == 1 ? local.existing_shared_vpc_ids[0] : null
+  preexisting_vpc_id      = var.vpc_id != null ? var.vpc_id : local.existing_shared_vpc_id
+  create_network          = var.vpc_id == null && local.existing_shared_vpc_id == null && var.create_network_if_missing
+  discovered_subnet_ids   = try(data.aws_subnets.shared[0].ids, [])
+  eks_cluster_security_group_ids = var.auto_allow_eks_cluster_security_group ? try(
+    data.aws_security_groups.eks_cluster[0].ids,
+    [],
+  ) : []
+  resolved_vpc_id = coalesce(
+    var.vpc_id,
+    local.existing_shared_vpc_id,
+    try(module.network[0].vpc_id, null),
+  )
+  resolved_subnet_ids = length(var.subnet_ids) > 0 ? var.subnet_ids : (
+    length(local.discovered_subnet_ids) > 0 ? local.discovered_subnet_ids : try(module.network[0].public_subnet_ids, [])
+  )
   resolved_allowed_sg_ids = distinct(concat(var.allowed_security_group_ids, local.eks_cluster_security_group_ids))
+  terraform_shared_data_bucket_name = coalesce(
+    var.terraform_shared_data_bucket_name,
+    "tf-shared-${local.shared_infra_name}-${data.aws_caller_identity.current.account_id}-${var.region}",
+  )
+}
+
+module "network" {
+  count  = local.create_network ? 1 : 0
+  source = "../../modules/network"
+
+  name                = local.shared_infra_name
+  cluster_name        = local.resolved_eks_cluster_name
+  vpc_cidr            = var.network_vpc_cidr
+  azs                 = local.azs
+  public_subnet_cidrs = var.public_subnet_cidrs
+}
+
+module "terraform_shared_data_bucket" {
+  count  = var.create_terraform_shared_data_bucket ? 1 : 0
+  source = "../../modules/terraform_shared_data_bucket"
+
+  bucket_name   = local.terraform_shared_data_bucket_name
+  force_destroy = var.terraform_shared_data_bucket_force_destroy
 }
 
 check "network_inputs" {
   assert {
     condition     = local.resolved_vpc_id != null && length(local.resolved_subnet_ids) >= 2
-    error_message = "Informe vpc_id e pelo menos duas subnet_ids, ou defina eks_cluster_name para descobrir a rede do cluster automaticamente."
+    error_message = "Informe vpc_id e pelo menos duas subnet_ids, reutilize uma VPC nomeada como <shared_infra_name>-vpc, ou mantenha create_network_if_missing=true para criar a rede automaticamente."
   }
 }
 
@@ -43,6 +107,13 @@ check "database_access_inputs" {
   assert {
     condition     = length(var.allowed_cidr_blocks) > 0 || length(local.resolved_allowed_sg_ids) > 0
     error_message = "Informe allowed_cidr_blocks, allowed_security_group_ids, ou use eks_cluster_name com auto_allow_eks_cluster_security_group=true."
+  }
+}
+
+check "shared_vpc_uniqueness" {
+  assert {
+    condition     = length(local.existing_shared_vpc_ids) <= 1
+    error_message = "Mais de uma VPC com o nome esperado foi encontrada. Ajuste shared_infra_name ou informe vpc_id explicitamente."
   }
 }
 
