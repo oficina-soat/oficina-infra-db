@@ -235,20 +235,51 @@ db_parameter_group_exists() {
   [[ -n "${matches}" && "${matches}" != "None" ]]
 }
 
-fail_missing_remote_state_with_existing_resources() {
+db_security_group_exists() {
+  local security_group_name="$1"
+
+  local matches=""
+  matches="$(aws ec2 describe-security-groups \
+    --region "${AWS_REGION}" \
+    --filters "Name=group-name,Values=${security_group_name}" \
+    --query 'SecurityGroups[].GroupId' \
+    --output text 2>/dev/null || true)"
+
+  [[ -n "${matches}" && "${matches}" != "None" ]]
+}
+
+cleanup_missing_remote_state_existing_db_resources() {
   local db_identifier="${TF_VAR_db_identifier:-oficina-postgres-lab}"
   local subnet_group_name="${db_identifier}-subnet-group"
   local parameter_group_name="${db_identifier}-pg"
+  local security_group_name="${db_identifier}-sg"
+  local found_existing_resource="false"
 
   if db_resource_exists "${db_identifier}"; then
-    echo "A instancia RDS ${db_identifier} ja existe, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Use o workflow manual de cleanup deste repo ou recupere o state antes de aplicar novamente." >&2
-    exit 1
+    found_existing_resource="true"
   fi
 
-  if db_subnet_group_exists "${subnet_group_name}" || db_parameter_group_exists "${parameter_group_name}"; then
-    echo "Recursos nomeados do banco (${subnet_group_name} ou ${parameter_group_name}) ja existem, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Faça cleanup/import antes de tentar novo apply." >&2
-    exit 1
+  if db_subnet_group_exists "${subnet_group_name}" || db_parameter_group_exists "${parameter_group_name}" || db_security_group_exists "${security_group_name}"; then
+    found_existing_resource="true"
   fi
+
+  if [[ "${found_existing_resource}" != "true" ]]; then
+    return
+  fi
+
+  log "Recursos orfaos do banco encontrados sem state remoto em ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY}; executando cleanup limitado ao banco antes do apply."
+
+  CLEANUP_DB_ONLY=true \
+  AWS_REGION="${AWS_REGION}" \
+  EKS_CLUSTER_NAME="${TF_VAR_eks_cluster_name:-${EKS_CLUSTER_NAME:-}}" \
+  SHARED_INFRA_NAME="${TF_VAR_shared_infra_name:-${SHARED_INFRA_NAME:-}}" \
+  DB_IDENTIFIER="${db_identifier}" \
+  DB_SUBNET_GROUP_NAME="${subnet_group_name}" \
+  DB_PARAMETER_GROUP_NAME="${parameter_group_name}" \
+  TF_STATE_BUCKET="${EFFECTIVE_TF_STATE_BUCKET}" \
+  TF_STATE_KEY="${TF_STATE_KEY}" \
+  TF_STATE_REGION="${TF_STATE_REGION}" \
+  bash "${REPO_ROOT}/scripts/cleanup-orphan-db.sh"
 }
 
 read_tf_output_raw() {
@@ -409,7 +440,7 @@ run_apply() {
         export TF_VAR_create_terraform_shared_data_bucket="false"
       fi
     else
-      fail_missing_remote_state_with_existing_resources
+      cleanup_missing_remote_state_existing_db_resources
 
       log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} existe, mas o state remoto ainda nao foi criado. Executando bootstrap local e migrando o state ao final."
       export TF_VAR_create_terraform_shared_data_bucket="false"
@@ -423,6 +454,7 @@ run_apply() {
     fi
   else
     log "Bucket de backend ${EFFECTIVE_TF_STATE_BUCKET} ainda nao existe; executando bootstrap local para cria-lo."
+    cleanup_missing_remote_state_existing_db_resources
     terraform_init_local
     set_shared_bucket_mode
     terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve

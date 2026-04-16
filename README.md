@@ -31,7 +31,7 @@ O repositório foi alinhado com `oficina-infra-k8s` para usar os mesmos nomes de
 - `terraform/environments/lab`: root module do ambiente
 - `scripts/ci-terraform.sh`: apply/destroy com bootstrap e reuso do backend remoto
 - `scripts/ci-deploy.sh`: apply do Terraform e operações opcionais de bootstrap do usuário da aplicação/secret no cluster
-- `scripts/cleanup-orphan-db.sh`: cleanup manual para recursos órfãos sem state remoto
+- `scripts/cleanup-orphan-db.sh`: cleanup para recursos órfãos sem state remoto; remove resíduos do banco e preserva recursos compartilhados ainda em uso
 
 ## Comportamento de reuso e criação
 
@@ -78,6 +78,8 @@ terraform -chdir=terraform/environments/lab init -reconfigure -backend-config=ba
 ```
 
 Nos workflows do GitHub Actions, o script `scripts/ci-terraform.sh` faz bootstrap local do bucket quando necessário, migra o state para S3 e reutiliza o bucket compartilhado quando ele já existir.
+
+Quando o state remoto ainda não existe, mas resíduos nomeados do banco já existem, o workflow executa automaticamente um cleanup limitado ao banco antes do `apply`. Esse cleanup não remove VPC, subnets, route tables, internet gateway ou bucket compartilhado.
 
 ## Apply
 

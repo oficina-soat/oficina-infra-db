@@ -13,6 +13,7 @@ TF_STATE_KEY="${TF_STATE_KEY:-oficina/lab/database/terraform.tfstate}"
 TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
 FINAL_SNAPSHOT_IDENTIFIER="${FINAL_SNAPSHOT_IDENTIFIER:-${DB_IDENTIFIER}-orphan-$(date '+%Y%m%d%H%M%S')}"
 SKIP_FINAL_SNAPSHOT="${SKIP_FINAL_SNAPSHOT:-false}"
+CLEANUP_DB_ONLY="${CLEANUP_DB_ONLY:-false}"
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -67,14 +68,6 @@ db_exists() {
     --db-instance-identifier "${DB_IDENTIFIER}" >/dev/null 2>&1
 }
 
-db_vpc_id() {
-  aws rds describe-db-instances \
-    --region "${AWS_REGION}" \
-    --db-instance-identifier "${DB_IDENTIFIER}" \
-    --query 'DBInstances[0].DBSubnetGroup.VpcId' \
-    --output text 2>/dev/null || true
-}
-
 db_security_group_id() {
   aws rds describe-db-instances \
     --region "${AWS_REGION}" \
@@ -108,7 +101,7 @@ list_eks_clusters_in_vpc() {
   done
 }
 
-ensure_vpc_is_not_shared() {
+vpc_is_safe_to_delete() {
   local vpc_id="$1"
   local sg_id="$2"
   local cluster_names=""
@@ -117,8 +110,8 @@ ensure_vpc_is_not_shared() {
 
   cluster_names="$(list_eks_clusters_in_vpc "${vpc_id}")"
   if [[ -n "${cluster_names}" ]]; then
-    echo "A VPC ${vpc_id} ainda esta sendo usada por clusters EKS (${cluster_names//$'\n'/ }). O cleanup foi bloqueado." >&2
-    exit 1
+    log "VPC ${vpc_id} mantida porque ainda esta sendo usada por clusters EKS (${cluster_names//$'\n'/ })."
+    return 1
   fi
 
   other_db_instances="$(aws rds describe-db-instances \
@@ -127,8 +120,8 @@ ensure_vpc_is_not_shared() {
     --output text 2>/dev/null || true)"
 
   if [[ -n "${other_db_instances}" && "${other_db_instances}" != "None" ]]; then
-    echo "A VPC ${vpc_id} ainda esta em uso por outras instancias RDS (${other_db_instances}). O cleanup foi bloqueado." >&2
-    exit 1
+    log "VPC ${vpc_id} mantida porque ainda esta em uso por outras instancias RDS (${other_db_instances})."
+    return 1
   fi
 
   if [[ -n "${sg_id}" && "${sg_id}" != "None" ]]; then
@@ -146,9 +139,11 @@ ensure_vpc_is_not_shared() {
   fi
 
   if [[ -n "${foreign_enis}" && "${foreign_enis}" != "None" ]]; then
-    echo "A VPC ${vpc_id} ainda possui interfaces de rede fora do banco (${foreign_enis}). O cleanup foi bloqueado." >&2
-    exit 1
+    log "VPC ${vpc_id} mantida porque ainda possui interfaces de rede fora do banco (${foreign_enis})."
+    return 1
   fi
+
+  return 0
 }
 
 disable_db_deletion_protection() {
@@ -182,8 +177,8 @@ delete_parameter_group_if_unused() {
     --output text 2>/dev/null || true)"
 
   if [[ -n "${in_use}" && "${in_use}" != "None" ]]; then
-    echo "O parameter group ${DB_PARAMETER_GROUP_NAME} ainda esta em uso por ${in_use}. O cleanup foi bloqueado." >&2
-    exit 1
+    log "Parameter group ${DB_PARAMETER_GROUP_NAME} mantido porque ainda esta em uso por ${in_use}."
+    return
   fi
 
   aws rds delete-db-parameter-group \
@@ -199,8 +194,8 @@ delete_subnet_group_if_unused() {
     --output text 2>/dev/null || true)"
 
   if [[ -n "${in_use}" && "${in_use}" != "None" ]]; then
-    echo "O subnet group ${DB_SUBNET_GROUP_NAME} ainda esta em uso por ${in_use}. O cleanup foi bloqueado." >&2
-    exit 1
+    log "Subnet group ${DB_SUBNET_GROUP_NAME} mantido porque ainda esta em uso por ${in_use}."
+    return
   fi
 
   aws rds delete-db-subnet-group \
@@ -219,8 +214,8 @@ delete_security_group_if_unused() {
     --output text 2>/dev/null || true)"
 
   if [[ -n "${in_use}" && "${in_use}" != "None" ]]; then
-    echo "O security group ${sg_id} ainda esta em uso por instancias RDS (${in_use}). O cleanup foi bloqueado." >&2
-    exit 1
+    log "Security group ${sg_id} mantido porque ainda esta em uso por instancias RDS (${in_use})."
+    return
   fi
 
   network_interfaces="$(aws ec2 describe-network-interfaces \
@@ -230,11 +225,15 @@ delete_security_group_if_unused() {
     --output text 2>/dev/null || true)"
 
   if [[ -n "${network_interfaces}" && "${network_interfaces}" != "None" ]]; then
-    echo "O security group ${sg_id} ainda esta em uso por interfaces de rede (${network_interfaces}). O cleanup foi bloqueado." >&2
-    exit 1
+    log "Security group ${sg_id} mantido porque ainda esta em uso por interfaces de rede (${network_interfaces})."
+    return
   fi
 
-  aws ec2 delete-security-group --region "${AWS_REGION}" --group-id "${sg_id}" >/dev/null 2>&1 || true
+  if aws ec2 delete-security-group --region "${AWS_REGION}" --group-id "${sg_id}" >/dev/null 2>&1; then
+    log "Security group ${sg_id} removido."
+  else
+    log "Security group ${sg_id} mantido porque a AWS ainda reporta dependencia nele."
+  fi
 }
 
 cleanup_named_vpc_if_safe() {
@@ -256,7 +255,9 @@ cleanup_named_vpc_if_safe() {
       continue
     fi
 
-    ensure_vpc_is_not_shared "${vpc_id}" "${db_sg_id:-}"
+    if ! vpc_is_safe_to_delete "${vpc_id}" "${db_sg_id:-}"; then
+      continue
+    fi
 
     subnet_ids="$(aws ec2 describe-subnets \
       --region "${AWS_REGION}" \
@@ -365,7 +366,6 @@ fi
 
 if db_exists; then
   db_sg_id="$(db_security_group_id)"
-  ensure_vpc_is_not_shared "$(db_vpc_id)" "${db_sg_id}"
   log "Desabilitando deletion protection da instancia ${DB_IDENTIFIER}"
   disable_db_deletion_protection
   log "Removendo instancia RDS ${DB_IDENTIFIER}"
@@ -376,16 +376,22 @@ fi
 delete_parameter_group_if_unused
 delete_subnet_group_if_unused
 
-if [[ -z "${db_sg_id}" ]]; then
-  db_sg_id="$(aws ec2 describe-security-groups \
-    --region "${AWS_REGION}" \
-    --filters "Name=group-name,Values=${DB_IDENTIFIER}-sg" \
-    --query 'SecurityGroups[0].GroupId' \
-    --output text 2>/dev/null || true)"
-fi
-
 if [[ -n "${db_sg_id}" && "${db_sg_id}" != "None" ]]; then
   delete_security_group_if_unused "${db_sg_id}"
+fi
+
+for named_sg_id in $(aws ec2 describe-security-groups \
+  --region "${AWS_REGION}" \
+  --filters "Name=group-name,Values=${DB_IDENTIFIER}-sg" \
+  --query 'SecurityGroups[].GroupId' \
+  --output text 2>/dev/null || true); do
+  [[ -n "${named_sg_id}" && "${named_sg_id}" != "None" && "${named_sg_id}" != "${db_sg_id}" ]] || continue
+  delete_security_group_if_unused "${named_sg_id}"
+done
+
+if [[ "${CLEANUP_DB_ONLY}" == "true" ]]; then
+  log "Cleanup limitado aos recursos exclusivos do banco concluido; VPC e bucket compartilhados foram mantidos."
+  exit 0
 fi
 
 cleanup_named_vpc_if_safe
