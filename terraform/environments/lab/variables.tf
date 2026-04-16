@@ -3,28 +3,68 @@ variable "region" {
   default = "us-east-1"
 }
 
-variable "eks_cluster_name" {
+variable "shared_infra_name" {
   type        = string
-  description = "Nome do cluster EKS do projeto oficina-infra-k8s. Quando informado, descobre VPC, sub-redes e SG primario automaticamente."
+  description = "Prefixo compartilhado de nomes do laboratorio. Quando nulo, reaproveita eks_cluster_name e cai para eks-lab."
   default     = null
   nullable    = true
+}
+
+variable "eks_cluster_name" {
+  type        = string
+  description = "Nome do cluster EKS compartilhado do laboratorio. Quando informado, tenta liberar acesso ao banco para os security groups tagueados desse cluster."
+  default     = "eks-lab"
 
   validation {
-    condition     = var.eks_cluster_name == null || trimspace(var.eks_cluster_name) != ""
-    error_message = "Se informado, eks_cluster_name nao pode ser vazio."
+    condition     = trimspace(var.eks_cluster_name) != ""
+    error_message = "eks_cluster_name nao pode ser vazio."
   }
 }
 
 variable "auto_allow_eks_cluster_security_group" {
   type        = bool
-  description = "Quando eks_cluster_name estiver definido, adiciona automaticamente o security group primario do cluster EKS como origem permitida para o banco."
+  description = "Quando true, adiciona automaticamente os security groups do cluster EKS descobertos por tag como origem permitida para o banco."
   default     = true
+}
+
+variable "create_network_if_missing" {
+  type        = bool
+  description = "Quando true, cria uma VPC dedicada com duas subnets publicas se nenhuma rede compartilhada existente for encontrada."
+  default     = true
+}
+
+variable "network_vpc_cidr" {
+  type        = string
+  description = "CIDR da VPC criada automaticamente quando create_network_if_missing=true."
+  default     = "10.0.0.0/16"
+}
+
+variable "azs" {
+  type        = list(string)
+  description = "Availability zones usadas pela rede criada automaticamente. Se vazio, usa duas zonas derivadas da regiao."
+  default     = []
+
+  validation {
+    condition     = length(var.azs) == 0 || length(var.azs) >= 2
+    error_message = "Informe pelo menos duas availability zones ou deixe vazio para usar o padrao."
+  }
+}
+
+variable "public_subnet_cidrs" {
+  type        = list(string)
+  description = "CIDRs das subnets publicas quando a rede deste projeto precisar ser criada."
+  default     = ["10.0.0.0/20", "10.0.16.0/20"]
+
+  validation {
+    condition     = length(var.public_subnet_cidrs) >= 2
+    error_message = "Informe pelo menos dois CIDRs de subnets publicas."
+  }
 }
 
 variable "db_identifier" {
   type        = string
   description = "Identificador unico da instancia RDS."
-  default     = "oficina-postgres"
+  default     = "oficina-postgres-lab"
 }
 
 variable "db_name" {
@@ -140,14 +180,14 @@ variable "final_snapshot_identifier" {
 
 variable "vpc_id" {
   type        = string
-  description = "VPC onde o RDS sera provisionado. Opcional quando eks_cluster_name estiver definido."
+  description = "VPC onde o RDS sera provisionado. Se omitido, o projeto tenta reutilizar <shared_infra_name>-vpc e, se ainda nao existir, cria uma rede nova."
   default     = null
   nullable    = true
 }
 
 variable "subnet_ids" {
   type        = list(string)
-  description = "Lista de sub-redes para o DB subnet group. No laboratorio, use as mesmas sub-redes publicas expostas pelo projeto oficina-infra-k8s."
+  description = "Lista de sub-redes para o DB subnet group. Se vazia, o projeto tenta reutilizar as subnets da VPC compartilhada ou criar as proprias."
   default     = []
 
   validation {
@@ -177,6 +217,25 @@ variable "storage_kms_key_id" {
   type        = string
   description = "KMS key para criptografia do storage do RDS. Se null, usa a chave gerenciada pela AWS."
   default     = null
+}
+
+variable "create_terraform_shared_data_bucket" {
+  type        = bool
+  description = "Quando true, cria o bucket S3 de dados compartilhados do Terraform caso ele precise ser gerenciado por este state."
+  default     = true
+}
+
+variable "terraform_shared_data_bucket_name" {
+  type        = string
+  description = "Nome do bucket S3 compartilhado. Se nulo, o nome e derivado de shared_infra_name, conta e regiao."
+  default     = null
+  nullable    = true
+}
+
+variable "terraform_shared_data_bucket_force_destroy" {
+  type        = bool
+  description = "Quando true, permite destruir o bucket compartilhado mesmo com objetos."
+  default     = false
 }
 
 variable "master_user_secret_kms_key_id" {
