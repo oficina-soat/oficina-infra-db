@@ -103,4 +103,6 @@ Antes de `destroy`, o workflow bloqueia a execução quando:
 - a VPC gerenciada por este repo ainda está em uso por clusters EKS, outros RDS ou ENIs externos ao banco
 - o bucket compartilhado contém objetos fora da key de state deste projeto
 
-O workflow `Cleanup Orphan DB Lab Infra` também bloqueia quando encontra state remoto existente ou dependências externas que indiquem uso real da infraestrutura compartilhada.
+O workflow `Cleanup Orphan DB Lab Infra` bloqueia quando encontra state remoto existente, porque nesse caso o caminho correto é o destroy normal. Quando encontra dependências externas na infraestrutura compartilhada, ele preserva esses recursos e continua removendo apenas o que for exclusivo do banco.
+
+No `Deploy Lab` e no `Terraform Apply Lab`, se o state remoto ainda não existir mas houver resíduos nomeados do banco, o script executa automaticamente um cleanup limitado aos recursos do banco antes de tentar o `apply`.
