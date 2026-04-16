@@ -64,9 +64,13 @@ normalize_optional_envs() {
   unset_if_empty "TF_VAR_eks_cluster_name"
   unset_if_empty "TF_VAR_vpc_id"
   unset_if_empty "TF_VAR_subnet_ids"
+  unset_if_empty "TF_VAR_azs"
+  unset_if_empty "TF_VAR_public_subnet_cidrs"
   unset_if_empty "TF_VAR_allowed_security_group_ids"
   unset_if_empty "TF_VAR_allowed_cidr_blocks"
   unset_if_empty "TF_VAR_terraform_shared_data_bucket_name"
+  unset_if_empty "TF_VAR_enabled_cloudwatch_logs_exports"
+  unset_if_empty "TF_VAR_tags"
 }
 
 aws_caller_account_id() {
