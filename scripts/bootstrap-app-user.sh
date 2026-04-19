@@ -61,6 +61,23 @@ require_non_empty() {
   fi
 }
 
+require_valid_secret_id() {
+  local value="$1"
+  local name="$2"
+
+  require_non_empty "${value}" "${name}"
+
+  if [[ "${value}" == *[[:space:]]* || "${value}" == *\"* || "${value}" == *"'"* ]]; then
+    echo "${name} invalido: contem espaco, quebra de linha ou aspas. Se o valor veio de terraform output no GitHub Actions, desative o terraform_wrapper do hashicorp/setup-terraform." >&2
+    exit 1
+  fi
+
+  if [[ ! "${value}" =~ ^arn:[A-Za-z0-9_+=,.@:/!-]+$ && ! "${value}" =~ ^[A-Za-z0-9/_+=.@!-]+$ ]]; then
+    echo "${name} invalido: informe um ARN ou nome de secret do AWS Secrets Manager." >&2
+    exit 1
+  fi
+}
+
 log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
 }
@@ -73,6 +90,7 @@ read_tf_output() {
 }
 
 read_secret_json() {
+  require_valid_secret_id "${MASTER_SECRET_ARN}" "MASTER_SECRET_ARN"
   require_cmd aws
   require_cmd jq
   aws secretsmanager get-secret-value \
