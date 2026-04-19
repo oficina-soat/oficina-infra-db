@@ -15,6 +15,7 @@ DB_NAME="${DB_NAME:-}"
 DB_USER="${DB_USER:-}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 DB_SSLMODE="${DB_SSLMODE:-require}"
+PSQL_DOCKER_IMAGE="${PSQL_DOCKER_IMAGE:-postgres:16-alpine}"
 
 usage() {
   cat <<EOF
@@ -32,6 +33,7 @@ Variaveis suportadas:
   DB_USER        Usuario. Se ausente, tenta ler do terraform output
   DB_PASSWORD    Senha do banco. Obrigatoria sem DB_SECRET_ARN
   DB_SSLMODE     SSL mode do psql. Default: require
+  PSQL_DOCKER_IMAGE Imagem Docker usada quando psql nao esta instalado. Default: postgres:16-alpine
 EOF
 }
 
@@ -96,12 +98,30 @@ read_secret_field() {
   jq -er --arg field_name "${field_name}" '.[$field_name] // empty' <<<"${secret_json}" 2>/dev/null || true
 }
 
+run_psql_import() {
+  local connection_string="host=${DB_HOST} port=${DB_PORT} dbname=${DB_NAME} user=${DB_USER} sslmode=${DB_SSLMODE}"
+
+  if command -v psql >/dev/null 2>&1; then
+    PGPASSWORD="${DB_PASSWORD}" psql \
+      "${connection_string}" \
+      -v ON_ERROR_STOP=1 \
+      -f "${IMPORT_FILE}"
+    return
+  fi
+
+  require_cmd docker
+
+  docker run --rm \
+    -v "${IMPORT_FILE}:/import.sql:ro" \
+    -e PGPASSWORD="${DB_PASSWORD}" \
+    "${PSQL_DOCKER_IMAGE}" \
+    psql "${connection_string}" -v ON_ERROR_STOP=1 -f /import.sql
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
 fi
-
-require_cmd psql
 
 if [[ ! "${IMPORT_FILE}" = /* ]]; then
   IMPORT_FILE="${REPO_ROOT}/${IMPORT_FILE}"
@@ -159,11 +179,8 @@ require_non_empty "${DB_USER}" "DB_USER"
 require_non_empty "${DB_PASSWORD}" "DB_PASSWORD"
 
 log "Executando ${IMPORT_FILE} em ${DB_HOST}:${DB_PORT}/${DB_NAME}"
-log "O import.sql nao e idempotente; ele pode falhar se os dados ja existirem"
+log "O import.sql e seed de laboratorio; dados existentes podem ser atualizados"
 
-PGPASSWORD="${DB_PASSWORD}" psql \
-  "host=${DB_HOST} port=${DB_PORT} dbname=${DB_NAME} user=${DB_USER} sslmode=${DB_SSLMODE}" \
-  -v ON_ERROR_STOP=1 \
-  -f "${IMPORT_FILE}"
+run_psql_import
 
 log "Importacao concluida"
