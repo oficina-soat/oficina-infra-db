@@ -30,7 +30,8 @@ O repositório foi alinhado com `oficina-infra-k8s` para usar os mesmos nomes de
 - `terraform/modules/rds-postgres`: módulo do banco
 - `terraform/environments/lab`: root module do ambiente
 - `scripts/ci-terraform.sh`: apply/destroy com bootstrap e reuso do backend remoto
-- `scripts/ci-deploy.sh`: apply do Terraform e operações opcionais de bootstrap do usuário da aplicação/secret no cluster
+- `scripts/ci-deploy.sh`: apply do Terraform, bootstrap opcional do usuário da aplicação, migrations Flyway e secret no cluster
+- `scripts/run-db-migrations.sh`: executa as migrations Flyway em `sql/migrations`
 - `scripts/cleanup-orphan-db.sh`: cleanup para recursos órfãos sem state remoto; remove resíduos do banco e preserva recursos compartilhados ainda em uso
 
 ## Comportamento de reuso e criação
@@ -129,6 +130,16 @@ APP_SECRET_NAME="oficina/lab/database/app" \
 ./scripts/bootstrap-app-user.sh
 ```
 
+Migrations do schema:
+
+```bash
+./scripts/run-db-migrations.sh migrate
+```
+
+O script usa o secret master do RDS exposto pelo Terraform quando `DB_SECRET_ARN` não é informado. Em CI ele usa a imagem Docker `redgate/flyway:12.4-alpine` quando o binário `flyway` não estiver instalado.
+
+As migrations ficam em `sql/migrations`. A `V1__create_app_schema.sql` é a baseline das entidades JPA do `oficina-app`; a `V2__create_auth_schema.sql` cria as tabelas de autenticação usadas pelo lambda.
+
 Publicação do secret no cluster:
 
 ```bash
@@ -141,10 +152,14 @@ UPDATE_KUBECONFIG=true \
 Carga inicial:
 
 ```bash
+./scripts/run-db-migrations.sh migrate
+
 DB_SECRET_ARN="oficina/lab/database/app" \
 IMPORT_FILE="sql/import.sql" \
 ./scripts/run-rds-import.sh
 ```
+
+`sql/import.sql` é seed de laboratório, não migration. Ele assume que o Flyway já criou as tabelas.
 
 ## Validação local
 
