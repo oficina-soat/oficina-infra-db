@@ -21,6 +21,10 @@ APP_SECRET_KMS_KEY_ID="${APP_SECRET_KMS_KEY_ID:-}"
 APPLY_K8S_SECRET="${APPLY_K8S_SECRET:-false}"
 K8S_NAMESPACE="${K8S_NAMESPACE:-default}"
 K8S_SECRET_NAME="${K8S_SECRET_NAME:-oficina-database-env}"
+RUN_DB_MIGRATIONS="${RUN_DB_MIGRATIONS:-true}"
+MIGRATIONS_DIR="${MIGRATIONS_DIR:-}"
+FLYWAY_DOCKER_IMAGE="${FLYWAY_DOCKER_IMAGE:-}"
+FLYWAY_BASELINE_ON_MIGRATE="${FLYWAY_BASELINE_ON_MIGRATE:-true}"
 bootstrap_output_file=""
 
 cleanup() {
@@ -67,22 +71,33 @@ TF_STATE_REGION="${TF_STATE_REGION}" \
 TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE}" \
 bash "${REPO_ROOT}/scripts/ci-terraform.sh"
 
+if [[ "${BOOTSTRAP_APP_USER}" == "true" ]]; then
+  bootstrap_output_file="$(mktemp)"
+
+  APP_DB_USER="${APP_DB_USER}" \
+  APP_DB_PASSWORD="${APP_DB_PASSWORD}" \
+  APP_DB_ALLOW_SCHEMA_CHANGES="${APP_DB_ALLOW_SCHEMA_CHANGES}" \
+  STORE_IN_SECRETS_MANAGER="${STORE_IN_SECRETS_MANAGER}" \
+  APP_SECRET_NAME="${APP_SECRET_NAME}" \
+  APP_SECRET_KMS_KEY_ID="${APP_SECRET_KMS_KEY_ID}" \
+  AWS_REGION="${AWS_REGION}" \
+  bash "${REPO_ROOT}/scripts/bootstrap-app-user.sh" | tee "${bootstrap_output_file}" >/dev/null
+
+  log "Usuario de aplicacao bootstrapado."
+fi
+
+if [[ "${RUN_DB_MIGRATIONS}" == "true" ]]; then
+  log "Executando migrations Flyway."
+  AWS_REGION="${AWS_REGION}" \
+  MIGRATIONS_DIR="${MIGRATIONS_DIR:-}" \
+  FLYWAY_DOCKER_IMAGE="${FLYWAY_DOCKER_IMAGE:-}" \
+  FLYWAY_BASELINE_ON_MIGRATE="${FLYWAY_BASELINE_ON_MIGRATE}" \
+  bash "${REPO_ROOT}/scripts/run-db-migrations.sh" migrate
+fi
+
 if [[ "${BOOTSTRAP_APP_USER}" != "true" ]]; then
   exit 0
 fi
-
-bootstrap_output_file="$(mktemp)"
-
-APP_DB_USER="${APP_DB_USER}" \
-APP_DB_PASSWORD="${APP_DB_PASSWORD}" \
-APP_DB_ALLOW_SCHEMA_CHANGES="${APP_DB_ALLOW_SCHEMA_CHANGES}" \
-STORE_IN_SECRETS_MANAGER="${STORE_IN_SECRETS_MANAGER}" \
-APP_SECRET_NAME="${APP_SECRET_NAME}" \
-APP_SECRET_KMS_KEY_ID="${APP_SECRET_KMS_KEY_ID}" \
-AWS_REGION="${AWS_REGION}" \
-bash "${REPO_ROOT}/scripts/bootstrap-app-user.sh" | tee "${bootstrap_output_file}" >/dev/null
-
-log "Usuario de aplicacao bootstrapado."
 
 if [[ "${APPLY_K8S_SECRET}" != "true" ]]; then
   exit 0

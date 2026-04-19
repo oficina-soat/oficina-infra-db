@@ -68,6 +68,9 @@ Usadas só no `Deploy Lab`:
 - `STORE_APP_DB_SECRET_IN_SECRETS_MANAGER`
 - `APP_DB_SECRET_NAME`
 - `APP_DB_SECRET_KMS_KEY_ID`
+- `RUN_DB_MIGRATIONS`: default `true`
+- `FLYWAY_DOCKER_IMAGE`: default `redgate/flyway:12.4-alpine`
+- `FLYWAY_BASELINE_ON_MIGRATE`: default `true`
 - `APPLY_K8S_SECRET`
 - `K8S_NAMESPACE`
 - `K8S_SECRET_NAME`
@@ -93,6 +96,16 @@ oficina/lab/database/terraform.tfstate
 Se o bucket ainda não existir, `scripts/ci-terraform.sh` faz bootstrap local, cria ou reaproveita o bucket compartilhado e migra o state para o backend remoto.
 
 Se o bucket já existir fora do state deste projeto, o workflow o reutiliza sem tentar recriá-lo.
+
+## Migrations do banco
+
+O workflow `Deploy Lab` executa `scripts/run-db-migrations.sh migrate` depois do `terraform apply` e depois do bootstrap opcional do usuário da aplicação.
+
+Por padrão, `RUN_DB_MIGRATIONS=true`. O script usa Flyway para aplicar os arquivos em `sql/migrations` e registra o histórico em `public.flyway_schema_history`.
+
+Quando o schema já existe porque foi criado anteriormente pelo Hibernate/Quarkus da aplicação principal, `FLYWAY_BASELINE_ON_MIGRATE=true` cria um baseline na versão `1` e ainda aplica as próximas migrations, começando pela `V2__create_auth_schema.sql`. Em bancos vazios, a `V1__create_app_schema.sql` e a `V2__create_auth_schema.sql` são aplicadas normalmente.
+
+A carga `sql/import.sql` continua sendo seed de laboratório e não roda automaticamente no deploy.
 
 ## Guardas destrutivas
 
