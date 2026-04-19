@@ -14,6 +14,7 @@ TF_STATE_KEY="${TF_STATE_KEY:-oficina/lab/database/terraform.tfstate}"
 TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
 TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE:-}"
 TERRAFORM_ACTION="${TERRAFORM_ACTION:-apply}"
+CI_TERRAFORM_OUTPUT_FILE="${CI_TERRAFORM_OUTPUT_FILE:-}"
 BACKEND_S3_TEMPLATE="${TERRAFORM_DIR}/backend.s3.tf.example"
 EFFECTIVE_TF_STATE_BUCKET=""
 backend_override_file=""
@@ -291,6 +292,46 @@ read_tf_output_raw() {
   terraform -chdir="${TERRAFORM_DIR}" output -raw "${output_name}" 2>/dev/null || true
 }
 
+require_tf_output_raw() {
+  local output_name="$1"
+  local value=""
+
+  value="$(read_tf_output_raw "${output_name}")"
+
+  if [[ -z "${value}" ]]; then
+    echo "Output Terraform obrigatorio ausente ou ilegivel: ${output_name}" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "${value}"
+}
+
+write_apply_outputs() {
+  local db_host=""
+  local db_port=""
+  local db_name=""
+  local db_user=""
+  local db_secret_arn=""
+
+  if [[ -z "${CI_TERRAFORM_OUTPUT_FILE}" ]]; then
+    return
+  fi
+
+  db_host="$(require_tf_output_raw db_endpoint)"
+  db_port="$(require_tf_output_raw db_port)"
+  db_name="$(require_tf_output_raw db_name)"
+  db_user="$(require_tf_output_raw db_username)"
+  db_secret_arn="$(require_tf_output_raw db_master_user_secret_arn)"
+
+  {
+    printf 'DB_HOST=%s\n' "${db_host}"
+    printf 'DB_PORT=%s\n' "${db_port}"
+    printf 'DB_NAME=%s\n' "${db_name}"
+    printf 'DB_USER=%s\n' "${db_user}"
+    printf 'DB_SECRET_ARN=%s\n' "${db_secret_arn}"
+  } >"${CI_TERRAFORM_OUTPUT_FILE}"
+}
+
 list_bucket_keys() {
   local bucket_name="$1"
 
@@ -520,6 +561,7 @@ export TF_VAR_eks_cluster_name="${TF_VAR_eks_cluster_name:-${EKS_CLUSTER_NAME:-$
 case "${TERRAFORM_ACTION}" in
   apply)
     run_apply
+    write_apply_outputs
     ;;
   destroy)
     run_destroy
