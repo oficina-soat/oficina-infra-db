@@ -36,6 +36,8 @@ jobs:
       K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'default' }}
       K8S_SECRET_NAME: ${{ vars.K8S_SECRET_NAME || 'oficina-database-env' }}
       RUN_DB_MIGRATIONS: ${{ vars.RUN_DB_MIGRATIONS || 'true' }}
+      RUN_DB_IMPORT: ${{ vars.RUN_DB_IMPORT || 'true' }}
+      IMPORT_FILE: ${{ vars.DB_IMPORT_FILE || 'sql/import.sql' }}
       FLYWAY_DOCKER_IMAGE: ${{ vars.FLYWAY_DOCKER_IMAGE || 'redgate/flyway:12.4-alpine' }}
       FLYWAY_BASELINE_ON_MIGRATE: ${{ vars.FLYWAY_BASELINE_ON_MIGRATE || 'true' }}
       AUTO_ALLOW_CI_RUNNER_CIDR: ${{ vars.AUTO_ALLOW_CI_RUNNER_CIDR || 'true' }}

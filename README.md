@@ -140,6 +140,8 @@ O script usa o secret master do RDS exposto pelo Terraform quando `DB_SECRET_ARN
 
 As migrations ficam em `sql/migrations`. A `V1__create_app_schema.sql` é a baseline das entidades JPA do `oficina-app`; a `V2__create_auth_schema.sql` cria as tabelas de autenticação usadas pelo lambda.
 
+No `Deploy Lab`, o seed `sql/import.sql` roda depois das migrations quando `RUN_DB_IMPORT=true` (default). Ele usa upserts para poder ser reexecutado no ambiente lab.
+
 Publicação do secret no cluster:
 
 ```bash

@@ -22,6 +22,8 @@ APPLY_K8S_SECRET="${APPLY_K8S_SECRET:-false}"
 K8S_NAMESPACE="${K8S_NAMESPACE:-default}"
 K8S_SECRET_NAME="${K8S_SECRET_NAME:-oficina-database-env}"
 RUN_DB_MIGRATIONS="${RUN_DB_MIGRATIONS:-true}"
+RUN_DB_IMPORT="${RUN_DB_IMPORT:-true}"
+IMPORT_FILE="${IMPORT_FILE:-}"
 MIGRATIONS_DIR="${MIGRATIONS_DIR:-}"
 FLYWAY_DOCKER_IMAGE="${FLYWAY_DOCKER_IMAGE:-}"
 FLYWAY_BASELINE_ON_MIGRATE="${FLYWAY_BASELINE_ON_MIGRATE:-true}"
@@ -124,7 +126,7 @@ configure_ci_runner_db_access() {
     return
   fi
 
-  if [[ "${RUN_DB_MIGRATIONS}" != "true" && "${BOOTSTRAP_APP_USER}" != "true" ]]; then
+  if [[ "${RUN_DB_MIGRATIONS}" != "true" && "${RUN_DB_IMPORT}" != "true" && "${BOOTSTRAP_APP_USER}" != "true" ]]; then
     return
   fi
 
@@ -200,6 +202,18 @@ if [[ "${RUN_DB_MIGRATIONS}" == "true" ]]; then
   FLYWAY_DOCKER_IMAGE="${FLYWAY_DOCKER_IMAGE:-}" \
   FLYWAY_BASELINE_ON_MIGRATE="${FLYWAY_BASELINE_ON_MIGRATE}" \
   bash "${REPO_ROOT}/scripts/run-db-migrations.sh" migrate
+fi
+
+if [[ "${RUN_DB_IMPORT}" == "true" ]]; then
+  log "Executando seed import.sql."
+  AWS_REGION="${AWS_REGION}" \
+  DB_SECRET_ARN="${TF_DB_SECRET_ARN}" \
+  DB_HOST="${TF_DB_HOST}" \
+  DB_PORT="${TF_DB_PORT}" \
+  DB_NAME="${TF_DB_NAME}" \
+  DB_USER="${TF_DB_USER}" \
+  IMPORT_FILE="${IMPORT_FILE:-}" \
+  bash "${REPO_ROOT}/scripts/run-rds-import.sh"
 fi
 
 if [[ "${BOOTSTRAP_APP_USER}" != "true" ]]; then
