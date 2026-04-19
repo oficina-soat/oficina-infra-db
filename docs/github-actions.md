@@ -71,6 +71,7 @@ Usadas só no `Deploy Lab`:
 - `RUN_DB_MIGRATIONS`: default `true`
 - `FLYWAY_DOCKER_IMAGE`: default `redgate/flyway:12.4-alpine`
 - `FLYWAY_BASELINE_ON_MIGRATE`: default `true`
+- `AUTO_ALLOW_CI_RUNNER_CIDR`: default `true`; adiciona o IPv4 publico do runner atual em `DB_ALLOWED_CIDR_BLOCKS` durante o deploy quando migrations ou bootstrap precisam conectar no RDS
 - `APPLY_K8S_SECRET`
 - `K8S_NAMESPACE`
 - `K8S_SECRET_NAME`
@@ -102,6 +103,8 @@ Se o bucket já existir fora do state deste projeto, o workflow o reutiliza sem 
 O workflow `Deploy Lab` executa `scripts/run-db-migrations.sh migrate` depois do `terraform apply` e depois do bootstrap opcional do usuário da aplicação.
 
 Por padrão, `RUN_DB_MIGRATIONS=true`. O script usa Flyway para aplicar os arquivos em `sql/migrations` e registra o histórico em `public.flyway_schema_history`.
+
+Como o Flyway roda no runner do GitHub Actions, o deploy adiciona automaticamente o IPv4 publico do runner atual como um CIDR `/32` permitido no security group do RDS quando `AUTO_ALLOW_CI_RUNNER_CIDR=true`. CIDRs definidos em `DB_ALLOWED_CIDR_BLOCKS` sao preservados.
 
 Quando o schema já existe porque foi criado anteriormente pelo Hibernate/Quarkus da aplicação principal, `FLYWAY_BASELINE_ON_MIGRATE=true` cria um baseline na versão `1` e ainda aplica as próximas migrations, começando pela `V2__create_auth_schema.sql`. Em bancos vazios, a `V1__create_app_schema.sql` e a `V2__create_auth_schema.sql` são aplicadas normalmente.
 
