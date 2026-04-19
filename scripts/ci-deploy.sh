@@ -25,6 +25,8 @@ RUN_DB_MIGRATIONS="${RUN_DB_MIGRATIONS:-true}"
 MIGRATIONS_DIR="${MIGRATIONS_DIR:-}"
 FLYWAY_DOCKER_IMAGE="${FLYWAY_DOCKER_IMAGE:-}"
 FLYWAY_BASELINE_ON_MIGRATE="${FLYWAY_BASELINE_ON_MIGRATE:-true}"
+AUTO_ALLOW_CI_RUNNER_CIDR="${AUTO_ALLOW_CI_RUNNER_CIDR:-true}"
+CI_RUNNER_PUBLIC_IP_URL="${CI_RUNNER_PUBLIC_IP_URL:-https://checkip.amazonaws.com}"
 bootstrap_output_file=""
 tf_outputs_file=""
 TF_DB_HOST=""
@@ -91,6 +93,55 @@ read_bootstrap_output_value() {
   read_output_value "${bootstrap_output_file}" "${key}"
 }
 
+append_allowed_cidr_block() {
+  local cidr_block="$1"
+  local allowed_cidr_blocks="${TF_VAR_allowed_cidr_blocks:-[]}"
+
+  require_cmd jq
+
+  if [[ -z "${allowed_cidr_blocks}" ]]; then
+    allowed_cidr_blocks="[]"
+  fi
+
+  if ! jq -e 'type == "array" and all(.[]; type == "string")' <<<"${allowed_cidr_blocks}" >/dev/null; then
+    echo "TF_VAR_allowed_cidr_blocks deve ser uma lista JSON de strings para permitir merge automatico do CIDR do runner." >&2
+    exit 1
+  fi
+
+  TF_VAR_allowed_cidr_blocks="$(
+    jq -c --arg cidr_block "${cidr_block}" \
+      'if index($cidr_block) then . else . + [$cidr_block] end' \
+      <<<"${allowed_cidr_blocks}"
+  )"
+  export TF_VAR_allowed_cidr_blocks
+}
+
+configure_ci_runner_db_access() {
+  local runner_ip=""
+  local runner_cidr=""
+
+  if [[ "${AUTO_ALLOW_CI_RUNNER_CIDR}" != "true" ]]; then
+    return
+  fi
+
+  if [[ "${RUN_DB_MIGRATIONS}" != "true" && "${BOOTSTRAP_APP_USER}" != "true" ]]; then
+    return
+  fi
+
+  require_cmd curl
+
+  runner_ip="$(curl -fsSL --max-time 10 "${CI_RUNNER_PUBLIC_IP_URL}" | tr -d '[:space:]')"
+
+  if [[ ! "${runner_ip}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "Nao foi possivel descobrir um IPv4 publico valido para liberar acesso do runner ao RDS: ${runner_ip}" >&2
+    exit 1
+  fi
+
+  runner_cidr="${runner_ip}/32"
+  append_allowed_cidr_block "${runner_cidr}"
+  log "Liberando acesso do runner atual ao RDS via ${runner_cidr}."
+}
+
 require_cmd aws
 require_cmd terraform
 
@@ -103,6 +154,7 @@ if [[ "${APPLY_K8S_SECRET}" == "true" ]]; then
 fi
 
 tf_outputs_file="$(mktemp)"
+configure_ci_runner_db_access
 
 TERRAFORM_ACTION=apply \
 AWS_REGION="${AWS_REGION}" \
