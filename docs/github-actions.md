@@ -68,6 +68,7 @@ Usadas só no `Deploy Lab`:
 - `STORE_APP_DB_SECRET_IN_SECRETS_MANAGER`
 - `APP_DB_SECRET_NAME`
 - `APP_DB_SECRET_KMS_KEY_ID`
+- `DB_SSLMODE`: default `require`
 - `RUN_DB_MIGRATIONS`: default `true`
 - `RUN_DB_IMPORT`: default `true`
 - `DB_IMPORT_FILE`: default `sql/import.sql`

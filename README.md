@@ -151,6 +151,8 @@ UPDATE_KUBECONFIG=true \
 ./scripts/apply-k8s-secret.sh
 ```
 
+O secret Kubernetes gerado usa `DB_SSLMODE=require` por padrão e publica a URL reativa do Quarkus com `sslmode=require`, compatível com o `rds.force_ssl=1` configurado no RDS.
+
 Carga inicial:
 
 ```bash
