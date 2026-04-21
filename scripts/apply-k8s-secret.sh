@@ -18,6 +18,7 @@ DB_PORT="${DB_PORT:-}"
 DB_NAME="${DB_NAME:-}"
 DB_USER="${DB_USER:-}"
 DB_PASSWORD="${DB_PASSWORD:-}"
+DB_SSLMODE="${DB_SSLMODE:-}"
 
 usage() {
   cat <<EOF
@@ -38,6 +39,7 @@ Variaveis suportadas:
   DB_NAME            Nome do banco. Se ausente, tenta ler do terraform output
   DB_USER            Usuario da aplicacao. Obrigatorio sem DB_SECRET_ARN
   DB_PASSWORD        Senha da aplicacao. Obrigatoria sem DB_SECRET_ARN
+  DB_SSLMODE         SSL mode do PostgreSQL. Default: require
 EOF
 }
 
@@ -118,10 +120,13 @@ stringData:
   POSTGRES_DB: ${DB_NAME}
   POSTGRES_USER: ${DB_USER}
   POSTGRES_PASSWORD: ${DB_PASSWORD}
+  POSTGRES_SSLMODE: ${DB_SSLMODE}
+  DB_SSLMODE: ${DB_SSLMODE}
   QUARKUS_DATASOURCE_DB_KIND: postgresql
   QUARKUS_DATASOURCE_USERNAME: ${DB_USER}
   QUARKUS_DATASOURCE_PASSWORD: ${DB_PASSWORD}
-  QUARKUS_DATASOURCE_REACTIVE_URL: postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+  QUARKUS_DATASOURCE_REACTIVE_URL: postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=${DB_SSLMODE}
+  QUARKUS_DATASOURCE_REACTIVE_POSTGRESQL_SSL_MODE: ${DB_SSLMODE}
 EOF
 }
 
@@ -163,6 +168,10 @@ if [[ -n "${DB_SECRET_ARN}" ]]; then
   if [[ -z "${DB_PASSWORD}" ]]; then
     DB_PASSWORD="$(read_secret_field "${SECRET_JSON}" password)"
   fi
+
+  if [[ -z "${DB_SSLMODE}" ]]; then
+    DB_SSLMODE="$(read_secret_field "${SECRET_JSON}" sslmode)"
+  fi
 fi
 
 if [[ -z "${DB_HOST}" ]]; then
@@ -182,6 +191,12 @@ require_non_empty "${DB_PORT}" "DB_PORT"
 require_non_empty "${DB_NAME}" "DB_NAME"
 require_non_empty "${DB_USER}" "DB_USER"
 require_non_empty "${DB_PASSWORD}" "DB_PASSWORD"
+
+if [[ -z "${DB_SSLMODE}" ]]; then
+  DB_SSLMODE="require"
+fi
+
+require_non_empty "${DB_SSLMODE}" "DB_SSLMODE"
 
 if [[ "${OUTPUT_ONLY}" == "true" ]]; then
   render_secret

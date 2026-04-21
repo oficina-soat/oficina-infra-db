@@ -260,7 +260,8 @@ if [[ "${STORE_IN_SECRETS_MANAGER}" == "true" ]]; then
     --arg username "${APP_DB_USER}" \
     --arg password "${APP_DB_PASSWORD}" \
     --arg port "${DB_PORT}" \
-    '{engine: $engine, host: $host, port: $port, dbname: $dbname, username: $username, password: $password}')"
+    --arg sslmode "${DB_SSLMODE}" \
+    '{engine: $engine, host: $host, port: $port, dbname: $dbname, username: $username, password: $password, sslmode: $sslmode}')"
 
   upsert_app_secret "${APP_SECRET_PAYLOAD}"
   log "Secret da aplicacao criada/atualizada em ${APP_SECRET_NAME}"
@@ -272,4 +273,5 @@ APP_DB_PASSWORD=${APP_DB_PASSWORD}
 DB_NAME=${DB_NAME}
 DB_HOST=${DB_HOST}
 DB_PORT=${DB_PORT}
+DB_SSLMODE=${DB_SSLMODE}
 EOF

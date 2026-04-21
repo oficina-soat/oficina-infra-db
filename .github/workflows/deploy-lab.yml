@@ -4,14 +4,85 @@ on:
   push:
   workflow_dispatch:
 
-concurrency:
-  group: lab-infra
-  cancel-in-progress: false
-
 jobs:
-  deploy:
-    if: github.event_name == 'workflow_dispatch' || github.ref_protected
+  validate:
+    if: github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name != 'main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Validate scripts and Terraform
+        shell: bash
+        run: |
+          bash -n scripts/*.sh
+          terraform fmt -check -recursive terraform
+          terraform -chdir=terraform/environments/lab init -backend=false -input=false
+          terraform -chdir=terraform/environments/lab validate
+
+  open-main-pull-request:
+    if: github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name != 'main'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_BASE_BRANCH: main
+      PR_HEAD_BRANCH: ${{ github.ref_name }}
+      PR_TITLE: "chore: promove ${{ github.ref_name }} para main"
+    steps:
+      - name: Open or update pull request to main
+        shell: bash
+        run: |
+          pr_body="$(
+            printf '%s\n\n' "Validacoes executadas com sucesso antes da abertura automatica deste pull request:"
+            printf '%s\n' "- \`bash -n scripts/*.sh\`"
+            printf '%s\n' "- \`terraform fmt -check -recursive terraform\`"
+            printf '%s\n' "- \`terraform -chdir=terraform/environments/lab init -backend=false -input=false\`"
+            printf '%s\n\n' "- \`terraform -chdir=terraform/environments/lab validate\`"
+            printf 'Workflow: %s/%s/actions/runs/%s\n' "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}"
+          )"
+
+          existing_pr_number="$(
+            gh pr list \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base "${PR_BASE_BRANCH}" \
+              --head "${GITHUB_REPOSITORY_OWNER}:${PR_HEAD_BRANCH}" \
+              --state open \
+              --json number \
+              --jq '.[0].number // empty'
+          )"
+
+          if [[ -n "${existing_pr_number}" ]]; then
+            gh pr edit "${existing_pr_number}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${PR_TITLE}" \
+              --body "${pr_body}"
+            exit 0
+          fi
+
+          gh pr create \
+            --repo "${GITHUB_REPOSITORY}" \
+            --base "${PR_BASE_BRANCH}" \
+            --head "${GITHUB_REPOSITORY_OWNER}:${PR_HEAD_BRANCH}" \
+            --title "${PR_TITLE}" \
+            --body "${pr_body}"
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name == 'main')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: lab-infra
+      cancel-in-progress: false
     environment:
       name: lab
     permissions:
@@ -32,6 +103,7 @@ jobs:
       STORE_IN_SECRETS_MANAGER: ${{ vars.STORE_APP_DB_SECRET_IN_SECRETS_MANAGER || 'false' }}
       APP_SECRET_NAME: ${{ vars.APP_DB_SECRET_NAME }}
       APP_SECRET_KMS_KEY_ID: ${{ vars.APP_DB_SECRET_KMS_KEY_ID }}
+      DB_SSLMODE: ${{ vars.DB_SSLMODE || 'require' }}
       APPLY_K8S_SECRET: ${{ vars.APPLY_K8S_SECRET || 'false' }}
       K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'default' }}
       K8S_SECRET_NAME: ${{ vars.K8S_SECRET_NAME || 'oficina-database-env' }}
