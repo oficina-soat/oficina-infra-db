@@ -9,12 +9,15 @@ O repositório usa a mesma família de workflows do `oficina-infra-k8s`, mas ope
 
 ## Gatilho
 
-- `push` em branch protegida para `Deploy Lab`
+- `push` na `main` para deploy pelo `Deploy Lab`
+- `push` em outras branches para validação e abertura automática de PR para `main`
 - `workflow_dispatch` para execução manual
 
 Todos usam o GitHub Environment `lab`.
 
-Todos os workflows que alteram infraestrutura compartilham o mesmo grupo de `concurrency`, então `deploy`, `apply`, `destroy` e `cleanup` não executam em paralelo no mesmo ambiente.
+Os jobs/workflows que alteram infraestrutura compartilham o mesmo grupo de `concurrency`, então `deploy`, `apply`, `destroy` e `cleanup` não executam em paralelo no mesmo ambiente.
+
+No `Deploy Lab`, pushes em branches diferentes de `main` executam validações de shell e Terraform. Quando elas passam, o workflow cria ou atualiza automaticamente um pull request da branch atual para `main`. O deploy de infraestrutura continua limitado a push na `main` ou execução manual por `workflow_dispatch`.
 
 ## Secrets obrigatórios
 
