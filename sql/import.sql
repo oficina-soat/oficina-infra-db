@@ -65,8 +65,11 @@ ON CONFLICT (id) DO UPDATE SET
     criado_em = EXCLUDED.criado_em,
     atualizado_em = EXCLUDED.atualizado_em;
 
-INSERT INTO public.estado_ordem_servico (ordem_de_servico_id, tipo_estado, data_estado)
-SELECT seed.ordem_de_servico_id, seed.tipo_estado, seed.data_estado
+INSERT INTO public.estado_ordem_servico (id, ordem_de_servico_id, tipo_estado, data_estado)
+SELECT nextval('public.estado_ordem_servico_seq'),
+       seed.ordem_de_servico_id,
+       seed.tipo_estado,
+       seed.data_estado
 FROM (
     VALUES
         ('2b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef'::uuid, 'EM_DIAGNOSTICO'::varchar(30), '2025-12-14 17:28:14.046297 +00:00'::timestamptz),

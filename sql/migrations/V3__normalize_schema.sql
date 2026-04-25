@@ -286,7 +286,7 @@ WHERE status IS NULL;
 
 INSERT INTO public.estado_ordem_servico (id, data_estado, tipo_estado, ordem_de_servico_id)
 SELECT nextval('public.estado_ordem_servico_seq'),
-       GREATEST(os.atualizado_em, os.criado_em, COALESCE(ultimo_evento.data_estado, os.criado_em)),
+       GREATEST(os.atualizado_em, os.criado_em, ultimo_evento.data_estado),
        os.estado_atual,
        os.id
 FROM public.ordem_de_servico os
@@ -297,8 +297,7 @@ LEFT JOIN LATERAL (
   ORDER BY eos.data_estado DESC, eos.id DESC
   LIMIT 1
 ) ultimo_evento ON true
-WHERE ultimo_evento.tipo_estado IS NULL
-   OR ultimo_evento.tipo_estado <> os.estado_atual;
+WHERE ultimo_evento.tipo_estado IS DISTINCT FROM os.estado_atual;
 
 ALTER TABLE public.ordem_de_servico
   ADD CONSTRAINT fk_ordem_de_servico_cliente
