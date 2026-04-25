@@ -1,0 +1,34 @@
+# Terraform validação
+prefix_rule(pattern = ["terraform", "-chdir=terraform/environments/lab", "init"], decision = "allow")
+prefix_rule(pattern = ["terraform", "fmt", "-check", "-recursive", "terraform"], decision = "allow")
+prefix_rule(pattern = ["terraform", "-chdir=terraform/environments/lab", "validate"], decision = "allow")
+prefix_rule(pattern = ["terraform", "-chdir=terraform/environments/lab", "plan"], decision = "allow")
+prefix_rule(pattern = ["terraform", "-chdir=terraform/environments/lab", "apply"], decision = "ask")
+prefix_rule(pattern = ["terraform", "-chdir=terraform/environments/lab", "destroy"], decision = "ask")
+
+# Scripts locais de validação
+prefix_rule(pattern = ["bash", "-n", "scripts/*.sh"], decision = "allow")
+
+# Scripts operacionais
+prefix_rule(pattern = ["./scripts/ci-terraform.sh"], decision = "ask")
+prefix_rule(pattern = ["./scripts/ci-deploy.sh"], decision = "ask")
+prefix_rule(pattern = ["./scripts/run-db-migrations.sh", "migrate"], decision = "ask")
+prefix_rule(pattern = ["./scripts/run-rds-import.sh"], decision = "ask")
+prefix_rule(pattern = ["./scripts/bootstrap-app-user.sh"], decision = "ask")
+prefix_rule(pattern = ["./scripts/apply-k8s-secret.sh"], decision = "ask")
+
+# Git
+prefix_rule(pattern = ["git", "status", "--short"], decision = "allow")
+prefix_rule(pattern = ["git", "add"], decision = "allow")
+prefix_rule(pattern = ["git", "commit", "-m"], decision = "allow")
+
+# AWS validação
+prefix_rule(pattern = ["aws", "sts", "get-caller-identity"], decision = "allow")
+
+# AWS leitura comum
+prefix_rule(pattern = ["aws", "rds", "describe-db-instances"], decision = "allow")
+prefix_rule(pattern = ["aws", "secretsmanager", "describe-secret"], decision = "allow")
+prefix_rule(pattern = ["aws", "secretsmanager", "get-secret-value"], decision = "allow")
+prefix_rule(pattern = ["aws", "s3", "ls"], decision = "allow")
+prefix_rule(pattern = ["aws", "eks", "describe-cluster"], decision = "allow")
+prefix_rule(pattern = ["aws", "eks", "list-clusters"], decision = "allow")
