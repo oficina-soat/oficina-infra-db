@@ -1,0 +1,156 @@
+name: Destroy AWS Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: GitHub Environment com vars e secrets do Terraform
+        required: true
+        default: hml
+        type: string
+      confirmation:
+        description: Digite DESTROY para confirmar a destruicao
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: destroy-${{ github.ref_name }}-${{ inputs.environment_name }}
+  cancel-in-progress: false
+
+jobs:
+  terraform-destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment_name }}
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      TERRAFORM_ROOT_DIR: ${{ vars.TERRAFORM_ROOT_DIR != '' && vars.TERRAFORM_ROOT_DIR || 'terraform/environments/lab' }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+
+    steps:
+      - name: Validate destroy confirmation
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.confirmation }}" == "DESTROY" ]] || {
+            echo "Para executar o destroy, informe exatamente DESTROY no campo confirmation."
+            exit 1
+          }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ vars.TERRAFORM_VERSION != '' && vars.TERRAFORM_VERSION || '1.6.6' }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION != '' && vars.AWS_REGION || 'us-east-1' }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Export GitHub Environment values
+        env:
+          GITHUB_VARS_JSON: ${{ toJson(vars) }}
+          GITHUB_SECRETS_JSON: ${{ toJson(secrets) }}
+        run: |
+          set -euo pipefail
+
+          export_context() {
+            local context_json="$1"
+
+            while IFS= read -r entry; do
+              raw_key="$(printf '%s' "${entry}" | base64 -d | jq -r '.key')"
+              raw_value="$(printf '%s' "${entry}" | base64 -d | jq -r '.value | tostring')"
+              export_key="${raw_key}"
+
+              if [[ "${raw_key}" == TF_VAR_* ]]; then
+                export_key="TF_VAR_${raw_key#TF_VAR_}"
+                export_key="TF_VAR_${export_key,,}"
+              elif [[ "${raw_key}" =~ ^[A-Z][A-Z0-9_]*$ ]] && [[ ! "${raw_key}" =~ ^(AWS_|TF_BACKEND_|TERRAFORM_) ]]; then
+                export_key="TF_VAR_${raw_key,,}"
+              fi
+
+              delimiter="__GITHUB_ENV_${export_key}_$(date +%s%N)__"
+              {
+                printf '%s<<%s\n' "${export_key}" "${delimiter}"
+                printf '%s\n' "${raw_value}"
+                printf '%s\n' "${delimiter}"
+              } >> "${GITHUB_ENV}"
+            done < <(
+              jq -r '
+                to_entries[]
+                | select(
+                    (
+                      (.key | test("^(AWS_|TF_VAR_|TF_BACKEND_|TERRAFORM_)"))
+                      or (.key | test("^[A-Z][A-Z0-9_]*$"))
+                    )
+                    and .value != null
+                    and (.value | tostring | length) > 0
+                  )
+                | @base64
+              ' <<<"${context_json}"
+            )
+          }
+
+          export_context "${GITHUB_VARS_JSON}"
+          export_context "${GITHUB_SECRETS_JSON}"
+
+      - name: Terraform Init
+        run: |
+          set -euo pipefail
+
+          backend_tf_path="${TERRAFORM_ROOT_DIR}/backend.tf"
+
+          if [[ -n "${TF_BACKEND_BUCKET:-}" || -n "${TF_BACKEND_KEY:-}" || -n "${TF_BACKEND_DYNAMODB_TABLE:-}" ]]; then
+            : "${TF_BACKEND_BUCKET:?Define TF_BACKEND_BUCKET no GitHub Environment.}"
+            : "${TF_BACKEND_KEY:?Define TF_BACKEND_KEY no GitHub Environment.}"
+            : "${TF_BACKEND_DYNAMODB_TABLE:?Define TF_BACKEND_DYNAMODB_TABLE no GitHub Environment.}"
+
+            printf '%s\n' \
+              'terraform {' \
+              '  backend "s3" {}' \
+              '}' > "${backend_tf_path}"
+            trap 'rm -f "${backend_tf_path}"' EXIT
+
+            backend_region="${TF_BACKEND_REGION:-${AWS_REGION:-us-east-1}}"
+            backend_args=(
+              "-backend-config=bucket=${TF_BACKEND_BUCKET}"
+              "-backend-config=key=${TF_BACKEND_KEY}"
+              "-backend-config=region=${backend_region}"
+              "-backend-config=dynamodb_table=${TF_BACKEND_DYNAMODB_TABLE}"
+            )
+
+            if [[ -n "${TF_BACKEND_ENCRYPT:-}" ]]; then
+              backend_args+=("-backend-config=encrypt=${TF_BACKEND_ENCRYPT}")
+            fi
+
+            if [[ -n "${TF_BACKEND_KMS_KEY_ID:-}" ]]; then
+              backend_args+=("-backend-config=kms_key_id=${TF_BACKEND_KMS_KEY_ID}")
+            fi
+
+            terraform -chdir="${TERRAFORM_ROOT_DIR}" init -input=false -no-color -reconfigure "${backend_args[@]}"
+          else
+            terraform -chdir="${TERRAFORM_ROOT_DIR}" init -input=false -no-color -reconfigure
+          fi
+
+      - name: Terraform Validate
+        run: terraform -chdir="${TERRAFORM_ROOT_DIR}" validate -no-color
+
+      - name: Terraform Destroy Plan
+        run: terraform -chdir="${TERRAFORM_ROOT_DIR}" plan -destroy -input=false -no-color -out=tfplan-destroy
+
+      - name: Terraform Destroy
+        run: terraform -chdir="${TERRAFORM_ROOT_DIR}" apply -input=false -no-color -auto-approve tfplan-destroy
