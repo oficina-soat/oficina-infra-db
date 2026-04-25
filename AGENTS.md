@@ -58,15 +58,45 @@ Antes de encerrar uma alteração, execute a validação compatível com o impac
 
 Se alguma verificação depender de credenciais, backend inicializado, AWS, Docker ou outras dependências não disponíveis no ambiente, registre isso claramente na resposta final.
 
+## Versionamento e Operação
+
+Este projeto depende de comandos explícitos para validar infraestrutura, operar o banco e registrar mudanças no Git.
+
+Comandos relevantes de Terraform:
+
+- `terraform -chdir=terraform/environments/lab init`
+- `terraform -chdir=terraform/environments/lab plan -var-file=terraform.tfvars`
+- `terraform -chdir=terraform/environments/lab apply -var-file=terraform.tfvars`
+- `terraform fmt -check -recursive terraform`
+- `terraform -chdir=terraform/environments/lab validate`
+
+Comandos relevantes de scripts:
+
+- `./scripts/ci-terraform.sh`
+- `./scripts/ci-deploy.sh`
+- `./scripts/run-db-migrations.sh migrate`
+- `./scripts/run-rds-import.sh`
+- `./scripts/bootstrap-app-user.sh`
+- `./scripts/apply-k8s-secret.sh`
+
 ## Commits
 
 Sempre que houver alterações no repositório ao final da tarefa, crie um commit antes de encerrar a resposta.
 
-- Use mensagens em português seguindo Conventional Commits.
-- Prefira mensagens curtas, objetivas e diretamente relacionadas à alteração.
-- Verifique o `git status --short` antes de preparar o commit.
-- Faça stage e commit apenas dos arquivos relacionados à tarefa atual.
-- Nunca inclua no commit mudanças alheias que já estavam no worktree.
+Antes de criar o commit:
+
+- verifique o estado do repositório com `git status --short`
+- adicione ao Git os arquivos novos criados no escopo da tarefa com `git add <arquivo>`
+- faça stage dos arquivos alterados da tarefa com `git add <arquivo>` ou `git add <diretorio>`
+- revise se não há mudanças alheias já staged antes de prosseguir
+
+Ao criar o commit:
+
+- use `git commit -m "<tipo>: <descricao em portugues>"`
+- use mensagens em português seguindo Conventional Commits
+- prefira mensagens curtas, objetivas e diretamente relacionadas à alteração
+- faça commit apenas dos arquivos relacionados à tarefa atual
+- nunca inclua no commit mudanças alheias que já estavam no worktree ou já estavam staged por outra tarefa
 
 Exemplos válidos:
 
