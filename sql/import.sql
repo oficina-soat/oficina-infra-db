@@ -22,9 +22,9 @@ SELECT setval('papel_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM public.pap
 
 -- noinspection SqlResolve
 INSERT INTO public.usuario (id, pessoa_id, password, status) VALUES
-    (1, 1, '$2a$12$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
-    (2, 2, '$2a$12$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
-    (3, 3, '$2a$12$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO')
+    (1, 1, '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
+    (2, 2, '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
+    (3, 3, '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO')
 ON CONFLICT (id) DO UPDATE SET
     pessoa_id = EXCLUDED.pessoa_id,
     password = EXCLUDED.password,
