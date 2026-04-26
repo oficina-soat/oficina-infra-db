@@ -1,3 +1,4 @@
+-- noinspection SqlResolve
 INSERT INTO public.pessoa (id, documento, tipo_pessoa, nome, email) VALUES
     (1, '84191404067', 'FISICA', 'Administrador Laboratorio', 'admin@oficina.com'),
     (2, '36655462007', 'FISICA', 'Mecanico Laboratorio', 'mecanico@oficina.com'),
@@ -19,6 +20,7 @@ ON CONFLICT (id) DO UPDATE SET
     nome = EXCLUDED.nome;
 SELECT setval('papel_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM public.papel), 1), true);
 
+-- noinspection SqlResolve
 INSERT INTO public.usuario (id, pessoa_id, password, status) VALUES
     (1, 1, '$2a$12$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
     (2, 2, '$2a$12$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
@@ -37,6 +39,7 @@ INSERT INTO public.usuario_papel (usuario_id, papel_id) VALUES
     (3, 3)
 ON CONFLICT (usuario_id, papel_id) DO NOTHING;
 
+-- noinspection SqlResolve
 INSERT INTO public.cliente (id, pessoa_id, documento, email) VALUES
     (1, 4, '50132372037', 'cliente1@oficina.com'),
     (2, 5, '12345678900', 'cliente2@oficina.com')
