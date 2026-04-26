@@ -1,9 +1,15 @@
-INSERT INTO public.pessoa (id, documento) VALUES
-    (1, '84191404067'),
-    (2, '36655462007'),
-    (3, '17245011010')
+-- noinspection SqlResolve
+INSERT INTO public.pessoa (id, documento, tipo_pessoa, nome, email) VALUES
+    (1, '84191404067', 'FISICA', 'Administrador Laboratorio', 'admin@oficina.com'),
+    (2, '36655462007', 'FISICA', 'Mecanico Laboratorio', 'mecanico@oficina.com'),
+    (3, '17245011010', 'FISICA', 'Recepcionista Laboratorio', 'recepcao@oficina.com'),
+    (4, '50132372037', 'FISICA', 'Cliente Laboratorio 1', 'cliente1@oficina.com'),
+    (5, '12345678900', 'FISICA', 'Cliente Laboratorio 2', 'cliente2@oficina.com')
 ON CONFLICT (id) DO UPDATE SET
-    documento = EXCLUDED.documento;
+    documento = EXCLUDED.documento,
+    tipo_pessoa = EXCLUDED.tipo_pessoa,
+    nome = EXCLUDED.nome,
+    email = EXCLUDED.email;
 SELECT setval('pessoa_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM public.pessoa), 1), true);
 
 INSERT INTO public.papel (id, nome) VALUES
@@ -14,10 +20,11 @@ ON CONFLICT (id) DO UPDATE SET
     nome = EXCLUDED.nome;
 SELECT setval('papel_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM public.papel), 1), true);
 
+-- noinspection SqlResolve
 INSERT INTO public.usuario (id, pessoa_id, password, status) VALUES
-    (1, 1, '$2a$12$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
-    (2, 2, '$2a$12$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
-    (3, 3, '$2a$12$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO')
+    (1, 1, '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
+    (2, 2, '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
+    (3, 3, '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO')
 ON CONFLICT (id) DO UPDATE SET
     pessoa_id = EXCLUDED.pessoa_id,
     password = EXCLUDED.password,
@@ -32,10 +39,12 @@ INSERT INTO public.usuario_papel (usuario_id, papel_id) VALUES
     (3, 3)
 ON CONFLICT (usuario_id, papel_id) DO NOTHING;
 
-INSERT INTO public.cliente (id, documento, email) VALUES
-    (1, '50132372037', 'cliente1@oficina.com'),
-    (2, '12345678900', 'cliente2@oficina.com')
+-- noinspection SqlResolve
+INSERT INTO public.cliente (id, pessoa_id, documento, email) VALUES
+    (1, 4, '50132372037', 'cliente1@oficina.com'),
+    (2, 5, '12345678900', 'cliente2@oficina.com')
 ON CONFLICT (id) DO UPDATE SET
+    pessoa_id = EXCLUDED.pessoa_id,
     documento = EXCLUDED.documento,
     email = EXCLUDED.email;
 SELECT setval('cliente_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM public.cliente), 1), true);
