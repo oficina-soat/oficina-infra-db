@@ -26,9 +26,9 @@ SELECT p.id,
        seed.status
 FROM (
     VALUES
-        ('84191404067', '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
-        ('36655462007', '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
-        ('17245011010', '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO')
+        ('84191404067', '$2a$10$OqdJA0ubv0ANPU4TfphJAOeZ0QcQca3GlnLtuahh6C6bV5how5gbm', 'ATIVO'),
+        ('36655462007', '$2a$10$OqdJA0ubv0ANPU4TfphJAOeZ0QcQca3GlnLtuahh6C6bV5how5gbm', 'ATIVO'),
+        ('17245011010', '$2a$10$OqdJA0ubv0ANPU4TfphJAOeZ0QcQca3GlnLtuahh6C6bV5how5gbm', 'ATIVO')
 ) AS seed(documento, password, status)
 JOIN public.pessoa p
   ON p.documento = seed.documento
