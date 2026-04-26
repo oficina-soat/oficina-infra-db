@@ -1,73 +1,108 @@
 -- noinspection SqlResolve
-INSERT INTO public.pessoa (id, documento, tipo_pessoa, nome, email) VALUES
-    (1, '84191404067', 'FISICA', 'Administrador Laboratorio', 'admin@oficina.com'),
-    (2, '36655462007', 'FISICA', 'Mecanico Laboratorio', 'mecanico@oficina.com'),
-    (3, '17245011010', 'FISICA', 'Recepcionista Laboratorio', 'recepcao@oficina.com'),
-    (4, '50132372037', 'FISICA', 'Cliente Laboratorio 1', 'cliente1@oficina.com'),
-    (5, '12345678900', 'FISICA', 'Cliente Laboratorio 2', 'cliente2@oficina.com')
-ON CONFLICT (id) DO UPDATE SET
-    documento = EXCLUDED.documento,
+INSERT INTO public.pessoa (documento, tipo_pessoa, nome, email) VALUES
+    ('84191404067', 'FISICA', 'Administrador Laboratorio', 'admin@oficina.com'),
+    ('36655462007', 'FISICA', 'Mecanico Laboratorio', 'mecanico@oficina.com'),
+    ('17245011010', 'FISICA', 'Recepcionista Laboratorio', 'recepcao@oficina.com'),
+    ('50132372037', 'FISICA', 'Cliente Laboratorio 1', 'cliente1@oficina.com'),
+    ('12345678900', 'FISICA', 'Cliente Laboratorio 2', 'cliente2@oficina.com')
+ON CONFLICT (documento) DO UPDATE SET
     tipo_pessoa = EXCLUDED.tipo_pessoa,
     nome = EXCLUDED.nome,
     email = EXCLUDED.email;
 SELECT setval('pessoa_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM public.pessoa), 1), true);
 
-INSERT INTO public.papel (id, nome) VALUES
-    (1, 'administrativo'),
-    (2, 'mecanico'),
-    (3, 'recepcionista')
-ON CONFLICT (id) DO UPDATE SET
+INSERT INTO public.papel (nome) VALUES
+    ('administrativo'),
+    ('mecanico'),
+    ('recepcionista')
+ON CONFLICT (nome) DO UPDATE SET
     nome = EXCLUDED.nome;
 SELECT setval('papel_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM public.papel), 1), true);
 
 -- noinspection SqlResolve
-INSERT INTO public.usuario (id, pessoa_id, password, status) VALUES
-    (1, 1, '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
-    (2, 2, '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
-    (3, 3, '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO')
-ON CONFLICT (id) DO UPDATE SET
-    pessoa_id = EXCLUDED.pessoa_id,
+INSERT INTO public.usuario (pessoa_id, password, status)
+SELECT p.id,
+       seed.password,
+       seed.status
+FROM (
+    VALUES
+        ('84191404067', '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
+        ('36655462007', '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO'),
+        ('17245011010', '$2a$10$1CBAHD.wKOCpNFGnEMUfn.sMSf8Muag0NWrtrBBxJpssTdZ1OCN3e', 'ATIVO')
+) AS seed(documento, password, status)
+JOIN public.pessoa p
+  ON p.documento = seed.documento
+ON CONFLICT (pessoa_id) DO UPDATE SET
     password = EXCLUDED.password,
     status = EXCLUDED.status;
 SELECT setval('usuario_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM public.usuario), 1), true);
 
-INSERT INTO public.usuario_papel (usuario_id, papel_id) VALUES
-    (1, 1),
-    (1, 2),
-    (1, 3),
-    (2, 2),
-    (3, 3)
+INSERT INTO public.usuario_papel (usuario_id, papel_id)
+SELECT u.id,
+       p.id
+FROM (
+    VALUES
+        ('84191404067', 'administrativo'),
+        ('84191404067', 'mecanico'),
+        ('84191404067', 'recepcionista'),
+        ('36655462007', 'mecanico'),
+        ('17245011010', 'recepcionista')
+) AS seed(documento, papel_nome)
+JOIN public.pessoa pessoa
+  ON pessoa.documento = seed.documento
+JOIN public.usuario u
+  ON u.pessoa_id = pessoa.id
+JOIN public.papel p
+  ON p.nome = seed.papel_nome
 ON CONFLICT (usuario_id, papel_id) DO NOTHING;
 
 -- noinspection SqlResolve
-INSERT INTO public.cliente (id, pessoa_id, documento, email) VALUES
-    (1, 4, '50132372037', 'cliente1@oficina.com'),
-    (2, 5, '12345678900', 'cliente2@oficina.com')
-ON CONFLICT (id) DO UPDATE SET
+INSERT INTO public.cliente (pessoa_id, documento, email)
+SELECT p.id,
+       seed.documento,
+       seed.email
+FROM (
+    VALUES
+        ('50132372037', 'cliente1@oficina.com'),
+        ('12345678900', 'cliente2@oficina.com')
+) AS seed(documento, email)
+JOIN public.pessoa p
+  ON p.documento = seed.documento
+ON CONFLICT (documento) DO UPDATE SET
     pessoa_id = EXCLUDED.pessoa_id,
-    documento = EXCLUDED.documento,
     email = EXCLUDED.email;
 SELECT setval('cliente_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM public.cliente), 1), true);
 
-INSERT INTO public.veiculo (id, placa, marca, modelo, ano) VALUES
-    (1, 'ABC1234', '11111111111', '11111111111', 11111111),
-    (2, 'ABC1D23', '11111111111', '11111111111', 11111111)
-ON CONFLICT (id) DO UPDATE SET
-    placa = EXCLUDED.placa,
+INSERT INTO public.veiculo (placa, marca, modelo, ano) VALUES
+    ('ABC1234', '11111111111', '11111111111', 11111111),
+    ('ABC1D23', '11111111111', '11111111111', 11111111)
+ON CONFLICT (placa) DO UPDATE SET
     marca = EXCLUDED.marca,
     modelo = EXCLUDED.modelo,
     ano = EXCLUDED.ano;
 SELECT setval('veiculo_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM public.veiculo), 1), true);
 
-INSERT INTO public.ordem_de_servico (id, cliente_id, veiculo_id, criado_em, atualizado_em) VALUES
-    ('2b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef', 1, 1, '2025-12-14 17:28:14.046297 +00:00', '2025-12-14 17:28:14.046297 +00:00'),
-    ('1b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef', 1, 1, '2025-10-14 17:20:14.046297 +00:00', '2025-12-14 17:20:14.046297 +00:00'),
-    ('f05dd17b-daae-4658-af7c-363dd6e6fdfb', 1, 1, '2025-12-14 17:28:14.714212 +00:00', '2025-12-14 17:28:14.714212 +00:00'),
-    ('5b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef', 1, 1, '2024-12-14 17:28:14.714212 +00:00', '2025-12-14 17:28:14.714212 +00:00'),
-    ('4b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef', 1, 1, '2025-12-14 17:28:14.714212 +00:00', '2025-12-14 17:28:14.714212 +00:00'),
-    ('6b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef', 1, 1, '2025-12-14 17:28:14.714212 +00:00', '2025-12-14 17:28:14.714212 +00:00'),
-    ('7b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef', 1, 1, '2025-12-14 17:28:14.714212 +00:00', '2025-12-14 17:28:14.714212 +00:00'),
-    ('4298695b-d6ae-45ac-a659-c4de90f81eb4', 2, 2, '2026-01-17 10:00:00.000000 +00:00', '2026-01-17 10:00:00.000000 +00:00')
+INSERT INTO public.ordem_de_servico (id, cliente_id, veiculo_id, criado_em, atualizado_em)
+SELECT seed.id,
+       c.id,
+       v.id,
+       seed.criado_em,
+       seed.atualizado_em
+FROM (
+    VALUES
+        ('2b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef'::uuid, '50132372037', 'ABC1234', '2025-12-14 17:28:14.046297 +00:00'::timestamptz, '2025-12-14 17:28:14.046297 +00:00'::timestamptz),
+        ('1b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef'::uuid, '50132372037', 'ABC1234', '2025-10-14 17:20:14.046297 +00:00'::timestamptz, '2025-12-14 17:20:14.046297 +00:00'::timestamptz),
+        ('f05dd17b-daae-4658-af7c-363dd6e6fdfb'::uuid, '50132372037', 'ABC1234', '2025-12-14 17:28:14.714212 +00:00'::timestamptz, '2025-12-14 17:28:14.714212 +00:00'::timestamptz),
+        ('5b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef'::uuid, '50132372037', 'ABC1234', '2024-12-14 17:28:14.714212 +00:00'::timestamptz, '2025-12-14 17:28:14.714212 +00:00'::timestamptz),
+        ('4b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef'::uuid, '50132372037', 'ABC1234', '2025-12-14 17:28:14.714212 +00:00'::timestamptz, '2025-12-14 17:28:14.714212 +00:00'::timestamptz),
+        ('6b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef'::uuid, '50132372037', 'ABC1234', '2025-12-14 17:28:14.714212 +00:00'::timestamptz, '2025-12-14 17:28:14.714212 +00:00'::timestamptz),
+        ('7b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef'::uuid, '50132372037', 'ABC1234', '2025-12-14 17:28:14.714212 +00:00'::timestamptz, '2025-12-14 17:28:14.714212 +00:00'::timestamptz),
+        ('4298695b-d6ae-45ac-a659-c4de90f81eb4'::uuid, '12345678900', 'ABC1D23', '2026-01-17 10:00:00.000000 +00:00'::timestamptz, '2026-01-17 10:00:00.000000 +00:00'::timestamptz)
+) AS seed(id, cliente_documento, veiculo_placa, criado_em, atualizado_em)
+JOIN public.cliente c
+  ON c.documento = seed.cliente_documento
+JOIN public.veiculo v
+  ON v.placa = seed.veiculo_placa
 ON CONFLICT (id) DO UPDATE SET
     cliente_id = EXCLUDED.cliente_id,
     veiculo_id = EXCLUDED.veiculo_id,
