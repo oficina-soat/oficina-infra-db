@@ -43,6 +43,7 @@ jobs:
       - name: Open or update pull request to main
         shell: bash
         run: |
+          head_ref="${GITHUB_REPOSITORY_OWNER}:${PR_HEAD_BRANCH}"
           pr_body="$(
             printf '%s\n\n' "Validacoes executadas com sucesso antes da abertura automatica deste pull request:"
             printf '%s\n' "- \`bash -n scripts/*.sh\`"
@@ -56,7 +57,7 @@ jobs:
             gh pr list \
               --repo "${GITHUB_REPOSITORY}" \
               --base "${PR_BASE_BRANCH}" \
-              --head "${GITHUB_REPOSITORY_OWNER}:${PR_HEAD_BRANCH}" \
+              --head "${head_ref}" \
               --state open \
               --json number \
               --jq '.[0].number // empty'
@@ -70,12 +71,44 @@ jobs:
             exit 0
           fi
 
-          gh pr create \
-            --repo "${GITHUB_REPOSITORY}" \
-            --base "${PR_BASE_BRANCH}" \
-            --head "${GITHUB_REPOSITORY_OWNER}:${PR_HEAD_BRANCH}" \
-            --title "${PR_TITLE}" \
-            --body "${pr_body}"
+          set +e
+          create_output="$(
+            gh pr create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base "${PR_BASE_BRANCH}" \
+              --head "${head_ref}" \
+              --title "${PR_TITLE}" \
+              --body "${pr_body}" \
+              2>&1
+          )"
+          create_status=$?
+          set -e
+
+          if [[ ${create_status} -eq 0 ]]; then
+            echo "${create_output}"
+            exit 0
+          fi
+
+          existing_pr_number="$(
+            gh pr list \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base "${PR_BASE_BRANCH}" \
+              --head "${head_ref}" \
+              --state open \
+              --json number \
+              --jq '.[0].number // empty'
+          )"
+
+          if [[ -n "${existing_pr_number}" ]]; then
+            gh pr edit "${existing_pr_number}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${PR_TITLE}" \
+              --body "${pr_body}"
+            exit 0
+          fi
+
+          echo "${create_output}" >&2
+          exit "${create_status}"
 
   deploy:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name == 'main')
