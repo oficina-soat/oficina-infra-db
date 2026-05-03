@@ -2,39 +2,24 @@
 
 set -euo pipefail
 
-AWS_REGION="${AWS_REGION:-}"
-EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-eks-lab}"
-SHARED_INFRA_NAME="${SHARED_INFRA_NAME:-${EKS_CLUSTER_NAME}}"
-DB_IDENTIFIER="${DB_IDENTIFIER:-oficina-postgres-lab}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+export REPO_ROOT
+
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+AWS_REGION="${AWS_REGION:-${OFICINA_AWS_REGION}}"
+EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-${OFICINA_EKS_CLUSTER_NAME}}"
+SHARED_INFRA_NAME="${SHARED_INFRA_NAME:-${OFICINA_SHARED_INFRA_NAME}}"
+DB_IDENTIFIER="${DB_IDENTIFIER:-${OFICINA_DB_IDENTIFIER}}"
 DB_SUBNET_GROUP_NAME="${DB_SUBNET_GROUP_NAME:-${DB_IDENTIFIER}-subnet-group}"
 DB_PARAMETER_GROUP_NAME="${DB_PARAMETER_GROUP_NAME:-${DB_IDENTIFIER}-pg}"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
-TF_STATE_KEY="${TF_STATE_KEY:-oficina/lab/database/terraform.tfstate}"
+TF_STATE_KEY="${TF_STATE_KEY:-${OFICINA_TF_STATE_KEY}}"
 TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
 FINAL_SNAPSHOT_IDENTIFIER="${FINAL_SNAPSHOT_IDENTIFIER:-${DB_IDENTIFIER}-orphan-$(date '+%Y%m%d%H%M%S')}"
 SKIP_FINAL_SNAPSHOT="${SKIP_FINAL_SNAPSHOT:-false}"
 CLEANUP_DB_ONLY="${CLEANUP_DB_ONLY:-false}"
-
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
 
 aws_caller_account_id() {
   aws sts get-caller-identity --query 'Account' --output text

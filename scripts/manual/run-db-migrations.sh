@@ -3,19 +3,22 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+export REPO_ROOT
 
-TERRAFORM_DIR="${TERRAFORM_DIR:-${REPO_ROOT}/terraform/environments/lab}"
-MIGRATIONS_DIR="${MIGRATIONS_DIR:-${REPO_ROOT}/sql/migrations}"
-AWS_REGION="${AWS_REGION:-us-east-1}"
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+TERRAFORM_DIR="${TERRAFORM_DIR:-${OFICINA_TERRAFORM_ENV_DIR}}"
+MIGRATIONS_DIR="${MIGRATIONS_DIR:-${REPO_ROOT}/${OFICINA_DB_MIGRATIONS_DIR}}"
+AWS_REGION="${AWS_REGION:-${OFICINA_AWS_REGION}}"
 DB_SECRET_ARN="${DB_SECRET_ARN:-}"
 DB_HOST="${DB_HOST:-}"
 DB_PORT="${DB_PORT:-}"
 DB_NAME="${DB_NAME:-}"
 DB_USER="${DB_USER:-}"
 DB_PASSWORD="${DB_PASSWORD:-}"
-DB_SSLMODE="${DB_SSLMODE:-require}"
-FLYWAY_DOCKER_IMAGE="${FLYWAY_DOCKER_IMAGE:-redgate/flyway:12.4-alpine}"
+DB_SSLMODE="${DB_SSLMODE:-${OFICINA_DB_SSLMODE}}"
+FLYWAY_DOCKER_IMAGE="${FLYWAY_DOCKER_IMAGE:-${OFICINA_FLYWAY_DOCKER_IMAGE}}"
 FLYWAY_DOCKER_NETWORK="${FLYWAY_DOCKER_NETWORK:-}"
 FLYWAY_SCHEMAS="${FLYWAY_SCHEMAS:-public}"
 FLYWAY_TABLE="${FLYWAY_TABLE:-flyway_schema_history}"
@@ -50,50 +53,6 @@ Variaveis suportadas:
 EOF
 }
 
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
-
-require_valid_secret_id() {
-  local value="$1"
-  local name="$2"
-
-  require_non_empty "${value}" "${name}"
-
-  if [[ "${value}" == *[[:space:]]* || "${value}" == *\"* || "${value}" == *"'"* ]]; then
-    echo "${name} invalido: contem espaco, quebra de linha ou aspas. Se o valor veio de terraform output no GitHub Actions, desative o terraform_wrapper do hashicorp/setup-terraform." >&2
-    exit 1
-  fi
-
-  if [[ ! "${value}" =~ ^arn:[A-Za-z0-9_+=,.@:/!-]+$ && ! "${value}" =~ ^[A-Za-z0-9/_+=.@!-]+$ ]]; then
-    echo "${name} invalido: informe um ARN ou nome de secret do AWS Secrets Manager." >&2
-    exit 1
-  fi
-}
-
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-read_tf_output() {
-  local output_name="$1"
-  if command -v terraform >/dev/null 2>&1 && [[ -d "${TERRAFORM_DIR}" ]]; then
-    terraform -chdir="${TERRAFORM_DIR}" output -raw "${output_name}" 2>/dev/null || true
-  fi
-}
-
 read_secret_json() {
   require_valid_secret_id "${DB_SECRET_ARN}" "DB_SECRET_ARN"
   require_cmd aws
@@ -103,12 +62,6 @@ read_secret_json() {
     --secret-id "${DB_SECRET_ARN}" \
     --query SecretString \
     --output text
-}
-
-read_secret_field() {
-  local secret_json="$1"
-  local field_name="$2"
-  jq -er --arg field_name "${field_name}" '.[$field_name] // empty' <<<"${secret_json}" 2>/dev/null || true
 }
 
 run_flyway() {

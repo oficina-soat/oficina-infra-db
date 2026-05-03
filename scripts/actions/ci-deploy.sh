@@ -3,30 +3,33 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+export REPO_ROOT
 
-AWS_REGION="${AWS_REGION:-}"
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+AWS_REGION="${AWS_REGION:-${OFICINA_AWS_REGION}}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
-TF_STATE_KEY="${TF_STATE_KEY:-oficina/lab/database/terraform.tfstate}"
+TF_STATE_KEY="${TF_STATE_KEY:-${OFICINA_TF_STATE_KEY}}"
 TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
 TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE:-}"
 BOOTSTRAP_APP_USER="${BOOTSTRAP_APP_USER:-false}"
-APP_DB_USER="${APP_DB_USER:-oficina_app}"
+APP_DB_USER="${APP_DB_USER:-${OFICINA_APP_DB_USER}}"
 APP_DB_PASSWORD="${APP_DB_PASSWORD:-}"
 APP_DB_ALLOW_SCHEMA_CHANGES="${APP_DB_ALLOW_SCHEMA_CHANGES:-true}"
 STORE_IN_SECRETS_MANAGER="${STORE_IN_SECRETS_MANAGER:-false}"
 APP_SECRET_NAME="${APP_SECRET_NAME:-}"
 APP_SECRET_KMS_KEY_ID="${APP_SECRET_KMS_KEY_ID:-}"
-DB_SSLMODE="${DB_SSLMODE:-require}"
+DB_SSLMODE="${DB_SSLMODE:-${OFICINA_DB_SSLMODE}}"
 APPLY_K8S_SECRET="${APPLY_K8S_SECRET:-false}"
-K8S_NAMESPACE="${K8S_NAMESPACE:-default}"
-K8S_SECRET_NAME="${K8S_SECRET_NAME:-oficina-database-env}"
+K8S_NAMESPACE="${K8S_NAMESPACE:-${OFICINA_K8S_NAMESPACE}}"
+K8S_SECRET_NAME="${K8S_SECRET_NAME:-${OFICINA_DB_K8S_SECRET_NAME}}"
 RUN_DB_MIGRATIONS="${RUN_DB_MIGRATIONS:-true}"
 RUN_DB_IMPORT="${RUN_DB_IMPORT:-true}"
 IMPORT_FILE="${IMPORT_FILE:-}"
 MIGRATIONS_DIR="${MIGRATIONS_DIR:-}"
-FLYWAY_DOCKER_IMAGE="${FLYWAY_DOCKER_IMAGE:-}"
+FLYWAY_DOCKER_IMAGE="${FLYWAY_DOCKER_IMAGE:-${OFICINA_FLYWAY_DOCKER_IMAGE}}"
 FLYWAY_BASELINE_ON_MIGRATE="${FLYWAY_BASELINE_ON_MIGRATE:-true}"
 AUTO_ALLOW_CI_RUNNER_CIDR="${AUTO_ALLOW_CI_RUNNER_CIDR:-true}"
 CI_RUNNER_PUBLIC_IP_URL="${CI_RUNNER_PUBLIC_IP_URL:-https://checkip.amazonaws.com}"
@@ -49,33 +52,6 @@ cleanup() {
 }
 
 trap cleanup EXIT
-
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-read_output_value() {
-  local file="$1"
-  local key="$2"
-  awk -F= -v target="${key}" '$1 == target { print substr($0, index($0, "=") + 1) }' "${file}"
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
 
 load_tf_outputs() {
   TF_DB_HOST="$(read_output_value "${tf_outputs_file}" DB_HOST)"
@@ -167,7 +143,7 @@ TF_STATE_KEY="${TF_STATE_KEY}" \
 TF_STATE_REGION="${TF_STATE_REGION}" \
 TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE}" \
 CI_TERRAFORM_OUTPUT_FILE="${tf_outputs_file}" \
-bash "${REPO_ROOT}/scripts/ci-terraform.sh"
+bash "${REPO_ROOT}/scripts/actions/ci-terraform.sh"
 
 load_tf_outputs
 
@@ -187,7 +163,7 @@ if [[ "${BOOTSTRAP_APP_USER}" == "true" ]]; then
   APP_SECRET_KMS_KEY_ID="${APP_SECRET_KMS_KEY_ID}" \
   DB_SSLMODE="${DB_SSLMODE}" \
   AWS_REGION="${AWS_REGION}" \
-  bash "${REPO_ROOT}/scripts/bootstrap-app-user.sh" | tee "${bootstrap_output_file}" >/dev/null
+  bash "${REPO_ROOT}/scripts/manual/bootstrap-app-user.sh" | tee "${bootstrap_output_file}" >/dev/null
 
   log "Usuario de aplicacao bootstrapado."
 fi
@@ -204,7 +180,7 @@ if [[ "${RUN_DB_MIGRATIONS}" == "true" ]]; then
   MIGRATIONS_DIR="${MIGRATIONS_DIR:-}" \
   FLYWAY_DOCKER_IMAGE="${FLYWAY_DOCKER_IMAGE:-}" \
   FLYWAY_BASELINE_ON_MIGRATE="${FLYWAY_BASELINE_ON_MIGRATE}" \
-  bash "${REPO_ROOT}/scripts/run-db-migrations.sh" migrate
+  bash "${REPO_ROOT}/scripts/manual/run-db-migrations.sh" migrate
 fi
 
 if [[ "${RUN_DB_IMPORT}" == "true" ]]; then
@@ -217,7 +193,7 @@ if [[ "${RUN_DB_IMPORT}" == "true" ]]; then
   DB_USER="${TF_DB_USER}" \
   DB_SSLMODE="${DB_SSLMODE}" \
   IMPORT_FILE="${IMPORT_FILE:-}" \
-  bash "${REPO_ROOT}/scripts/run-rds-import.sh"
+  bash "${REPO_ROOT}/scripts/manual/run-rds-import.sh"
 fi
 
 if [[ "${BOOTSTRAP_APP_USER}" != "true" ]]; then
@@ -242,7 +218,7 @@ if [[ -n "${APP_SECRET_NAME}" && "${STORE_IN_SECRETS_MANAGER}" == "true" ]]; the
   K8S_NAMESPACE="${K8S_NAMESPACE}" \
   K8S_SECRET_NAME="${K8S_SECRET_NAME}" \
   DB_SSLMODE="${DB_SSLMODE}" \
-  bash "${REPO_ROOT}/scripts/apply-k8s-secret.sh"
+  bash "${REPO_ROOT}/scripts/manual/apply-k8s-secret.sh"
   exit 0
 fi
 
@@ -257,4 +233,4 @@ DB_NAME="${DB_NAME}" \
 DB_HOST="${DB_HOST}" \
 DB_PORT="${DB_PORT}" \
 DB_SSLMODE="${DB_SSLMODE}" \
-bash "${REPO_ROOT}/scripts/apply-k8s-secret.sh"
+bash "${REPO_ROOT}/scripts/manual/apply-k8s-secret.sh"

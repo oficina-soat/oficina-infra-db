@@ -3,21 +3,19 @@
 O repositório usa a mesma família de workflows do `oficina-infra-k8s`, mas operando apenas sobre a infraestrutura do banco:
 
 - `./.github/workflows/deploy-lab.yml`
-- `./.github/workflows/terraform-apply-lab.yml`
-- `./.github/workflows/terraform-destroy-lab.yml`
-- `./.github/workflows/cleanup-orphan-db-lab.yml`
+- `./.github/workflows/destroy-lab.yml`
 
 ## Gatilho
 
 - `push` na `main` para deploy pelo `Deploy Lab`
-- `push` em outras branches para validação e abertura automática de PR para `main`
+- `push` na `develop` para validação e abertura automática de PR para `main`
 - `workflow_dispatch` para execução manual
 
 Todos usam o GitHub Environment `lab`.
 
-Os jobs/workflows que alteram infraestrutura compartilham o mesmo grupo de `concurrency`, então `deploy`, `apply`, `destroy` e `cleanup` não executam em paralelo no mesmo ambiente.
+Os jobs/workflows que alteram infraestrutura compartilham o mesmo grupo de `concurrency` deste repo, então `deploy`, `destroy` e cleanup de órfãos não executam em paralelo no mesmo ambiente.
 
-No `Deploy Lab`, pushes em branches diferentes de `main` executam validações de shell e Terraform. Quando elas passam, o workflow cria ou atualiza automaticamente um pull request da branch atual para `main`. O deploy de infraestrutura continua limitado a push na `main` ou execução manual por `workflow_dispatch`.
+No `Deploy Lab`, pushes na `develop` executam validações de shell e Terraform. Quando elas passam, o workflow cria automaticamente um pull request da `develop` para `main`, caso ainda não exista. O deploy de infraestrutura continua limitado a push na `main` ou execução manual por `workflow_dispatch`.
 
 ## Secrets obrigatórios
 
@@ -48,9 +46,7 @@ No `Deploy Lab`, pushes em branches diferentes de `main` executam validações d
 - `DB_NETWORK_VPC_CIDR`
 - `DB_AZS`: lista JSON
 - `DB_PUBLIC_SUBNET_CIDRS`: lista JSON
-- `CREATE_TERRAFORM_SHARED_DATA_BUCKET`
 - `TERRAFORM_SHARED_DATA_BUCKET_NAME`
-- `TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY`
 - `TF_STATE_BUCKET`
 - `TF_STATE_KEY`
 - `TF_STATE_REGION`
@@ -100,13 +96,13 @@ O state default deste projeto é:
 oficina/lab/database/terraform.tfstate
 ```
 
-Se o bucket ainda não existir, `scripts/ci-terraform.sh` faz bootstrap local, cria ou reaproveita o bucket compartilhado e migra o state para o backend remoto.
+Se o bucket ainda não existir, `scripts/actions/ci-terraform.sh` faz bootstrap local, cria ou reaproveita o bucket compartilhado e migra o state para o backend remoto.
 
 Se o bucket já existir fora do state deste projeto, o workflow o reutiliza sem tentar recriá-lo.
 
 ## Migrations do banco
 
-O workflow `Deploy Lab` executa `scripts/run-db-migrations.sh migrate` depois do `terraform apply` e depois do bootstrap opcional do usuário da aplicação. Depois das migrations, quando `RUN_DB_IMPORT=true`, executa `scripts/run-rds-import.sh` para aplicar o seed de laboratorio.
+O workflow `Deploy Lab` executa `scripts/manual/run-db-migrations.sh migrate` depois do `terraform apply` e depois do bootstrap opcional do usuário da aplicação. Depois das migrations, quando `RUN_DB_IMPORT=true`, executa `scripts/manual/run-rds-import.sh` para aplicar o seed de laboratorio.
 
 Por padrão, `RUN_DB_MIGRATIONS=true`. O script usa Flyway para aplicar os arquivos em `sql/migrations` e registra o histórico em `public.flyway_schema_history`.
 
@@ -125,6 +121,6 @@ Antes de `destroy`, o workflow bloqueia a execução quando:
 - a VPC gerenciada por este repo ainda está em uso por clusters EKS, outros RDS ou ENIs externos ao banco
 - o bucket compartilhado contém objetos fora da key de state deste projeto
 
-O workflow `Cleanup Orphan DB Lab Infra` bloqueia quando encontra state remoto existente, porque nesse caso o caminho correto é o destroy normal. Quando encontra dependências externas na infraestrutura compartilhada, ele preserva esses recursos e continua removendo apenas o que for exclusivo do banco.
+O `Destroy Lab` tem a opção manual `cleanup_orphans_only`. Ela executa o cleanup de recursos órfãos quando não existe state remoto; se o state remoto existir, o cleanup é bloqueado porque o caminho correto é o destroy normal. Quando encontra dependências externas na infraestrutura compartilhada, ele preserva esses recursos e continua removendo apenas o que for exclusivo do banco.
 
-No `Deploy Lab` e no `Terraform Apply Lab`, se o state remoto ainda não existir mas houver resíduos nomeados do banco, o script executa automaticamente um cleanup limitado aos recursos do banco antes de tentar o `apply`.
+No `Deploy Lab`, se o state remoto ainda não existir mas houver resíduos nomeados do banco, o script executa automaticamente um cleanup limitado aos recursos do banco antes de tentar o `apply`.
