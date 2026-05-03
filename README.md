@@ -15,6 +15,87 @@ O repositório foi alinhado com `oficina-infra-k8s` para usar os mesmos nomes de
 - VPC/subnets do lab quando a rede compartilhada ainda não existir
 - bucket S3 compartilhado do Terraform quando ele precisar ser criado por este state
 
+## Diagrama de serviços
+
+```mermaid
+flowchart LR
+  github[GitHub Actions<br/>deploy-lab / destroy-lab]
+  local[Operador local<br/>scripts/manual]
+  terraform[Terraform<br/>terraform/environments/lab]
+
+  github --> terraform
+  local --> terraform
+
+  subgraph aws[AWS]
+    state[(S3 bucket compartilhado<br/>state Terraform)]
+
+    subgraph network[Rede do lab<br/>criada ou reutilizada]
+      vpc[VPC eks-lab]
+      igw[Internet Gateway]
+      route[Route table publica]
+      subnetA[Public subnet AZ A]
+      subnetB[Public subnet AZ B]
+      eksSg[Security groups do EKS<br/>descobertos por tag]
+      cidrs[CIDRs permitidos<br/>allowed_cidr_blocks]
+    end
+
+    subgraph database[PostgreSQL gerenciado]
+      dbSg[Security group do RDS<br/>porta 5432]
+      subnetGroup[DB subnet group]
+      parameterGroup[DB parameter group<br/>force_ssl / scram-sha-256]
+      rds[(Amazon RDS PostgreSQL<br/>oficina-postgres-lab)]
+      masterSecret[AWS Secrets Manager<br/>secret master gerado pelo RDS]
+      appSecret[AWS Secrets Manager<br/>secret da aplicacao opcional]
+    end
+
+    subgraph observability[Observabilidade opcional]
+      logGroups[CloudWatch Log Groups<br/>postgresql / upgrade]
+      alarms[CloudWatch Alarms<br/>CPU / storage / memoria]
+      monitoringRole[IAM role<br/>Enhanced Monitoring]
+    end
+  end
+
+  subgraph eks[EKS compartilhado<br/>oficina-infra-k8s]
+    k8sSecret[Kubernetes Secret<br/>oficina-database-env]
+    oficinaApp[oficina-app]
+  end
+
+  subgraph consumers[Consumidores externos]
+    authLambda[oficina-auth-lambda<br/>usa schema auth]
+  end
+
+  terraform --> state
+  terraform --> vpc
+  vpc --> igw
+  igw --> route
+  route --> subnetA
+  route --> subnetB
+  terraform --> dbSg
+  terraform --> subnetGroup
+  terraform --> parameterGroup
+  terraform --> rds
+  subnetA --> subnetGroup
+  subnetB --> subnetGroup
+  subnetGroup --> rds
+  parameterGroup --> rds
+  dbSg --> rds
+  eksSg -->|ingress 5432| dbSg
+  cidrs -->|ingress 5432| dbSg
+  rds --> masterSecret
+  rds --> logGroups
+  monitoringRole --> rds
+  rds --> alarms
+
+  local -->|bootstrap-app-user.sh| appSecret
+  github -->|ci-deploy.sh| appSecret
+  appSecret -->|apply-k8s-secret.sh| k8sSecret
+  masterSecret -->|run-db-migrations.sh| rds
+  masterSecret -->|run-rds-import.sh| rds
+  k8sSecret --> oficinaApp
+  oficinaApp -->|PostgreSQL SSL 5432| dbSg
+  authLambda -->|PostgreSQL SSL 5432| dbSg
+```
+
 ## Convenções padronizadas com o repo k8s
 
 - nome padrão da infra compartilhada: `eks-lab`
