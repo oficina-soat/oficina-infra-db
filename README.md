@@ -29,10 +29,10 @@ O repositório foi alinhado com `oficina-infra-k8s` para usar os mesmos nomes de
 - `terraform/modules/terraform_shared_data_bucket`: mesmo módulo de bucket compartilhado do repo `oficina-infra-k8s`
 - `terraform/modules/rds-postgres`: módulo do banco
 - `terraform/environments/lab`: root module do ambiente
-- `scripts/ci-terraform.sh`: apply/destroy com bootstrap e reuso do backend remoto
-- `scripts/ci-deploy.sh`: apply do Terraform, bootstrap opcional do usuário da aplicação, migrations Flyway e secret no cluster
-- `scripts/run-db-migrations.sh`: executa as migrations Flyway em `sql/migrations`
-- `scripts/cleanup-orphan-db.sh`: cleanup para recursos órfãos sem state remoto; remove resíduos do banco e preserva recursos compartilhados ainda em uso
+- `scripts/actions/ci-terraform.sh`: apply/destroy com bootstrap e reuso do backend remoto
+- `scripts/actions/ci-deploy.sh`: apply do Terraform, bootstrap opcional do usuário da aplicação, migrations Flyway e secret no cluster
+- `scripts/manual/run-db-migrations.sh`: executa as migrations Flyway em `sql/migrations`
+- `scripts/actions/cleanup-orphan-db.sh`: cleanup para recursos órfãos sem state remoto; remove resíduos do banco e preserva recursos compartilhados ainda em uso
 
 ## Comportamento de reuso e criação
 
@@ -78,7 +78,7 @@ cp terraform/environments/lab/backend.hcl.example terraform/environments/lab/bac
 terraform -chdir=terraform/environments/lab init -reconfigure -backend-config=backend.hcl
 ```
 
-Nos workflows do GitHub Actions, o script `scripts/ci-terraform.sh` faz bootstrap local do bucket quando necessário, migra o state para S3 e reutiliza o bucket compartilhado quando ele já existir.
+Nos workflows do GitHub Actions, o script `scripts/actions/ci-terraform.sh` faz bootstrap local do bucket quando necessário, migra o state para S3 e reutiliza o bucket compartilhado quando ele já existir.
 
 Quando o state remoto ainda não existe, mas resíduos nomeados do banco já existem, o workflow executa automaticamente um cleanup limitado ao banco antes do `apply`. Esse cleanup não remove VPC, subnets, route tables, internet gateway ou bucket compartilhado.
 
@@ -112,11 +112,9 @@ Nos GitHub Actions, o destroy faz verificações extras antes de continuar:
 Workflows disponíveis:
 
 - `.github/workflows/deploy-lab.yml`
-- `.github/workflows/terraform-apply-lab.yml`
-- `.github/workflows/terraform-destroy-lab.yml`
-- `.github/workflows/cleanup-orphan-db-lab.yml`
+- `.github/workflows/destroy-lab.yml`
 
-Todos usam o GitHub Environment `lab` e o mesmo grupo de `concurrency` do repo `oficina-infra-k8s`.
+Todos usam o GitHub Environment `lab` e um grupo de `concurrency` próprio do banco, mantendo a mesma organização do repo `oficina-infra-k8s` sem acoplar a execução entre repositórios.
 
 Detalhes de variáveis e secrets: [docs/github-actions.md](docs/github-actions.md)
 
@@ -127,13 +125,13 @@ Bootstrap do usuário da aplicação:
 ```bash
 STORE_IN_SECRETS_MANAGER=true \
 APP_SECRET_NAME="oficina/lab/database/app" \
-./scripts/bootstrap-app-user.sh
+./scripts/manual/bootstrap-app-user.sh
 ```
 
 Migrations do schema:
 
 ```bash
-./scripts/run-db-migrations.sh migrate
+./scripts/manual/run-db-migrations.sh migrate
 ```
 
 O script usa o secret master do RDS exposto pelo Terraform quando `DB_SECRET_ARN` não é informado. Em CI ele usa a imagem Docker `redgate/flyway:12.4-alpine` quando o binário `flyway` não estiver instalado.
@@ -148,7 +146,7 @@ Publicação do secret no cluster:
 DB_SECRET_ARN="oficina/lab/database/app" \
 EKS_CLUSTER_NAME="eks-lab" \
 UPDATE_KUBECONFIG=true \
-./scripts/apply-k8s-secret.sh
+./scripts/manual/apply-k8s-secret.sh
 ```
 
 O secret Kubernetes gerado usa `DB_SSLMODE=require` por padrão e publica a URL reativa do Quarkus com `sslmode=require`, compatível com o `rds.force_ssl=1` configurado no RDS.
@@ -156,11 +154,11 @@ O secret Kubernetes gerado usa `DB_SSLMODE=require` por padrão e publica a URL 
 Carga inicial:
 
 ```bash
-./scripts/run-db-migrations.sh migrate
+./scripts/manual/run-db-migrations.sh migrate
 
 DB_SECRET_ARN="oficina/lab/database/app" \
 IMPORT_FILE="sql/import.sql" \
-./scripts/run-rds-import.sh
+./scripts/manual/run-rds-import.sh
 ```
 
 `sql/import.sql` é seed de laboratório, não migration. Ele assume que o Flyway já criou as tabelas.
@@ -170,5 +168,5 @@ IMPORT_FILE="sql/import.sql" \
 ```bash
 terraform fmt -check -recursive terraform
 terraform -chdir=terraform/environments/lab validate
-bash -n scripts/*.sh
+find scripts -type f -name '*.sh' -print0 | xargs -0 bash -n
 ```

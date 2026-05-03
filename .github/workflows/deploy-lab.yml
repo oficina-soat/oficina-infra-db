@@ -2,182 +2,112 @@ name: Deploy Lab
 
 on:
   push:
+    branches:
+      - develop
+      - main
   workflow_dispatch:
+
+concurrency:
+  group: lab-infra-db
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   validate:
-    if: github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name != 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      TF_CLI_ARGS: -no-color
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
 
-      - name: Validate scripts and Terraform
+      - name: Validate repository
         shell: bash
         run: |
-          bash -n scripts/*.sh
           terraform fmt -check -recursive terraform
           terraform -chdir=terraform/environments/lab init -backend=false -input=false
           terraform -chdir=terraform/environments/lab validate
-
-  open-main-pull-request:
-    if: github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name != 'main'
-    needs: validate
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      PR_BASE_BRANCH: main
-      PR_HEAD_BRANCH: ${{ github.ref_name }}
-      PR_TITLE: "chore: promove ${{ github.ref_name }} para main"
-    steps:
-      - name: Open or update pull request to main
-        shell: bash
-        run: |
-          head_ref="${GITHUB_REPOSITORY_OWNER}:${PR_HEAD_BRANCH}"
-          pr_body="$(
-            printf '%s\n\n' "Validacoes executadas com sucesso antes da abertura automatica deste pull request:"
-            printf '%s\n' "- \`bash -n scripts/*.sh\`"
-            printf '%s\n' "- \`terraform fmt -check -recursive terraform\`"
-            printf '%s\n' "- \`terraform -chdir=terraform/environments/lab init -backend=false -input=false\`"
-            printf '%s\n\n' "- \`terraform -chdir=terraform/environments/lab validate\`"
-            printf 'Workflow: %s/%s/actions/runs/%s\n' "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}"
-          )"
-
-          existing_pr_number="$(
-            gh pr list \
-              --repo "${GITHUB_REPOSITORY}" \
-              --base "${PR_BASE_BRANCH}" \
-              --head "${head_ref}" \
-              --state open \
-              --json number \
-              --jq '.[0].number // empty'
-          )"
-
-          if [[ -n "${existing_pr_number}" ]]; then
-            gh pr edit "${existing_pr_number}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --title "${PR_TITLE}" \
-              --body "${pr_body}"
-            exit 0
-          fi
-
-          set +e
-          create_output="$(
-            gh pr create \
-              --repo "${GITHUB_REPOSITORY}" \
-              --base "${PR_BASE_BRANCH}" \
-              --head "${head_ref}" \
-              --title "${PR_TITLE}" \
-              --body "${pr_body}" \
-              2>&1
-          )"
-          create_status=$?
-          set -e
-
-          if [[ ${create_status} -eq 0 ]]; then
-            echo "${create_output}"
-            exit 0
-          fi
-
-          existing_pr_number="$(
-            gh pr list \
-              --repo "${GITHUB_REPOSITORY}" \
-              --base "${PR_BASE_BRANCH}" \
-              --head "${head_ref}" \
-              --state open \
-              --json number \
-              --jq '.[0].number // empty'
-          )"
-
-          if [[ -n "${existing_pr_number}" ]]; then
-            gh pr edit "${existing_pr_number}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --title "${PR_TITLE}" \
-              --body "${pr_body}"
-            exit 0
-          fi
-
-          echo "${create_output}" >&2
-          exit "${create_status}"
+          find scripts -type f -name '*.sh' -print0 | xargs -0 bash -n
 
   deploy:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name == 'main')
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' || github.ref_name == 'main'
     runs-on: ubuntu-latest
-    concurrency:
-      group: lab-infra
-      cancel-in-progress: false
     environment:
       name: lab
     permissions:
       contents: read
     env:
       TF_IN_AUTOMATION: "true"
+      TF_CLI_ARGS: -no-color
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
       SHARED_INFRA_NAME: ${{ vars.SHARED_INFRA_NAME || vars.EKS_CLUSTER_NAME || 'eks-lab' }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'oficina/lab/database/terraform.tfstate' }}
       TF_STATE_REGION: ${{ vars.TF_STATE_REGION || vars.AWS_REGION || 'us-east-1' }}
       TF_STATE_DYNAMODB_TABLE: ${{ vars.TF_STATE_DYNAMODB_TABLE }}
-      BOOTSTRAP_APP_USER: ${{ vars.BOOTSTRAP_APP_USER || 'false' }}
-      APP_DB_USER: ${{ vars.APP_DB_USER || 'oficina_app' }}
-      APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
-      APP_DB_ALLOW_SCHEMA_CHANGES: ${{ vars.APP_DB_ALLOW_SCHEMA_CHANGES || 'true' }}
-      STORE_IN_SECRETS_MANAGER: ${{ vars.STORE_APP_DB_SECRET_IN_SECRETS_MANAGER || 'false' }}
-      APP_SECRET_NAME: ${{ vars.APP_DB_SECRET_NAME }}
-      APP_SECRET_KMS_KEY_ID: ${{ vars.APP_DB_SECRET_KMS_KEY_ID }}
-      DB_SSLMODE: ${{ vars.DB_SSLMODE || 'require' }}
-      APPLY_K8S_SECRET: ${{ vars.APPLY_K8S_SECRET || 'false' }}
-      K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'default' }}
-      K8S_SECRET_NAME: ${{ vars.K8S_SECRET_NAME || 'oficina-database-env' }}
-      RUN_DB_MIGRATIONS: ${{ vars.RUN_DB_MIGRATIONS || 'true' }}
-      RUN_DB_IMPORT: ${{ vars.RUN_DB_IMPORT || 'true' }}
-      IMPORT_FILE: ${{ vars.DB_IMPORT_FILE || 'sql/import.sql' }}
-      FLYWAY_DOCKER_IMAGE: ${{ vars.FLYWAY_DOCKER_IMAGE || 'redgate/flyway:12.4-alpine' }}
-      FLYWAY_BASELINE_ON_MIGRATE: ${{ vars.FLYWAY_BASELINE_ON_MIGRATE || 'true' }}
-      AUTO_ALLOW_CI_RUNNER_CIDR: ${{ vars.AUTO_ALLOW_CI_RUNNER_CIDR || 'true' }}
       TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
       TF_VAR_shared_infra_name: ${{ vars.SHARED_INFRA_NAME || vars.EKS_CLUSTER_NAME || 'eks-lab' }}
       TF_VAR_eks_cluster_name: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
       TF_VAR_db_identifier: ${{ vars.DB_IDENTIFIER || 'oficina-postgres-lab' }}
-      TF_VAR_db_name: ${{ vars.DB_NAME || 'app' }}
-      TF_VAR_db_username: ${{ vars.DB_USERNAME || 'oficina_master' }}
-      TF_VAR_instance_class: ${{ vars.DB_INSTANCE_CLASS || 'db.t4g.micro' }}
-      TF_VAR_engine_version: ${{ vars.DB_ENGINE_VERSION || '16' }}
-      TF_VAR_allocated_storage: ${{ vars.DB_ALLOCATED_STORAGE || '20' }}
-      TF_VAR_max_allocated_storage: ${{ vars.DB_MAX_ALLOCATED_STORAGE || '40' }}
-      TF_VAR_publicly_accessible: ${{ vars.DB_PUBLICLY_ACCESSIBLE || 'true' }}
-      TF_VAR_deletion_protection: ${{ vars.DB_DELETION_PROTECTION || 'true' }}
+      TF_VAR_db_name: ${{ vars.DB_NAME }}
+      TF_VAR_db_username: ${{ vars.DB_USERNAME }}
+      TF_VAR_instance_class: ${{ vars.DB_INSTANCE_CLASS }}
+      TF_VAR_engine_version: ${{ vars.DB_ENGINE_VERSION }}
+      TF_VAR_allocated_storage: ${{ vars.DB_ALLOCATED_STORAGE }}
+      TF_VAR_max_allocated_storage: ${{ vars.DB_MAX_ALLOCATED_STORAGE }}
+      TF_VAR_publicly_accessible: ${{ vars.DB_PUBLICLY_ACCESSIBLE }}
+      TF_VAR_deletion_protection: ${{ vars.DB_DELETION_PROTECTION }}
       TF_VAR_final_snapshot_identifier: ${{ vars.DB_FINAL_SNAPSHOT_IDENTIFIER || format('{0}-final', vars.DB_IDENTIFIER || 'oficina-postgres-lab') }}
       TF_VAR_allowed_cidr_blocks: ${{ vars.DB_ALLOWED_CIDR_BLOCKS }}
       TF_VAR_allowed_security_group_ids: ${{ vars.DB_ALLOWED_SECURITY_GROUP_IDS }}
       TF_VAR_vpc_id: ${{ vars.DB_VPC_ID }}
       TF_VAR_subnet_ids: ${{ vars.DB_SUBNET_IDS }}
-      TF_VAR_create_network_if_missing: ${{ vars.DB_CREATE_NETWORK_IF_MISSING || 'true' }}
-      TF_VAR_network_vpc_cidr: ${{ vars.DB_NETWORK_VPC_CIDR || '10.0.0.0/16' }}
+      TF_VAR_create_network_if_missing: ${{ vars.DB_CREATE_NETWORK_IF_MISSING }}
+      TF_VAR_network_vpc_cidr: ${{ vars.DB_NETWORK_VPC_CIDR }}
       TF_VAR_azs: ${{ vars.DB_AZS }}
       TF_VAR_public_subnet_cidrs: ${{ vars.DB_PUBLIC_SUBNET_CIDRS }}
-      TF_VAR_create_terraform_shared_data_bucket: ${{ vars.CREATE_TERRAFORM_SHARED_DATA_BUCKET || 'true' }}
-      TF_VAR_terraform_shared_data_bucket_name: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_NAME }}
-      TF_VAR_terraform_shared_data_bucket_force_destroy: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY || 'false' }}
-      TF_VAR_create_alarms: ${{ vars.DB_CREATE_ALARMS || 'false' }}
+      TF_VAR_terraform_shared_data_bucket_name: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_NAME || vars.TF_STATE_BUCKET }}
+      TF_VAR_create_alarms: ${{ vars.DB_CREATE_ALARMS }}
       TF_VAR_enabled_cloudwatch_logs_exports: ${{ vars.DB_ENABLED_CLOUDWATCH_LOGS_EXPORTS }}
-      TF_VAR_monitoring_interval: ${{ vars.DB_MONITORING_INTERVAL || '0' }}
-      TF_VAR_performance_insights_enabled: ${{ vars.DB_PERFORMANCE_INSIGHTS_ENABLED || 'false' }}
+      TF_VAR_monitoring_interval: ${{ vars.DB_MONITORING_INTERVAL }}
+      TF_VAR_performance_insights_enabled: ${{ vars.DB_PERFORMANCE_INSIGHTS_ENABLED }}
       TF_VAR_tags: ${{ vars.DB_TAGS }}
+      BOOTSTRAP_APP_USER: ${{ vars.BOOTSTRAP_APP_USER || 'false' }}
+      APP_DB_USER: ${{ vars.APP_DB_USER || 'oficina_app' }}
+      APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
+      APP_DB_ALLOW_SCHEMA_CHANGES: ${{ vars.APP_DB_ALLOW_SCHEMA_CHANGES || 'true' }}
+      STORE_IN_SECRETS_MANAGER: ${{ vars.STORE_APP_DB_SECRET_IN_SECRETS_MANAGER || 'false' }}
+      APP_SECRET_NAME: ${{ vars.APP_DB_SECRET_NAME || 'oficina/lab/database/app' }}
+      APP_SECRET_KMS_KEY_ID: ${{ vars.APP_DB_SECRET_KMS_KEY_ID }}
+      DB_SSLMODE: ${{ vars.DB_SSLMODE || 'require' }}
+      RUN_DB_MIGRATIONS: ${{ vars.RUN_DB_MIGRATIONS || 'true' }}
+      RUN_DB_IMPORT: ${{ vars.RUN_DB_IMPORT || 'true' }}
+      IMPORT_FILE: ${{ vars.DB_IMPORT_FILE || 'sql/import.sql' }}
+      MIGRATIONS_DIR: ${{ vars.DB_MIGRATIONS_DIR || 'sql/migrations' }}
+      FLYWAY_DOCKER_IMAGE: ${{ vars.FLYWAY_DOCKER_IMAGE || 'redgate/flyway:12.4-alpine' }}
+      FLYWAY_BASELINE_ON_MIGRATE: ${{ vars.FLYWAY_BASELINE_ON_MIGRATE || 'true' }}
+      AUTO_ALLOW_CI_RUNNER_CIDR: ${{ vars.AUTO_ALLOW_CI_RUNNER_CIDR || 'true' }}
+      APPLY_K8S_SECRET: ${{ vars.APPLY_K8S_SECRET || 'false' }}
+      K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'default' }}
+      K8S_SECRET_NAME: ${{ vars.K8S_SECRET_NAME || 'oficina-database-env' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
@@ -186,17 +116,7 @@ jobs:
 
       - name: Setup kubectl
         if: env.APPLY_K8S_SECRET == 'true'
-        uses: azure/setup-kubectl@v4
-        with:
-          version: latest
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        uses: azure/setup-kubectl@v5
 
       - name: Validate workflow configuration
         shell: bash
@@ -208,7 +128,7 @@ jobs:
 
           for name in "${required_vars[@]}"; do
             if [[ -z "${!name:-}" ]]; then
-              echo "Configuracao obrigatoria ausente em vars/secrets do GitHub: ${name}" >&2
+              echo "Configuracao obrigatoria ausente em vars/secrets do GitHub (organization, repository ou environment): ${name}" >&2
               exit 1
             fi
           done
@@ -225,6 +145,98 @@ jobs:
 
           aws sts get-caller-identity >/dev/null
 
-      - name: Deploy infrastructure and optional database secret
+      - name: Deploy lab database infrastructure
         shell: bash
-        run: bash ./scripts/ci-deploy.sh
+        run: bash ./scripts/actions/ci-deploy.sh
+
+  open-pull-request-to-main:
+    needs: validate
+    if: github.event_name == 'push' && github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Open pull request to main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: main
+        run: |
+          find_existing_pr_url() {
+            local candidate_head=""
+            local pr_url=""
+
+            for candidate_head in "${GITHUB_REPOSITORY_OWNER}:${HEAD_BRANCH}" "${HEAD_BRANCH}"; do
+              pr_url="$(
+                gh pr list \
+                  --repo "${GITHUB_REPOSITORY}" \
+                  --base "${BASE_BRANCH}" \
+                  --head "${candidate_head}" \
+                  --state open \
+                  --json url \
+                  --jq '.[0].url // empty'
+              )"
+
+              if [[ -n "${pr_url}" ]]; then
+                printf '%s\n' "${pr_url}"
+                return
+              fi
+            done
+          }
+
+          git fetch origin "${BASE_BRANCH}" "${HEAD_BRANCH}"
+          head_ref="${GITHUB_REPOSITORY_OWNER}:${HEAD_BRANCH}"
+
+          if git merge-base "origin/${BASE_BRANCH}" "origin/${HEAD_BRANCH}" >/dev/null 2>&1; then
+            if git diff --quiet "origin/${BASE_BRANCH}...origin/${HEAD_BRANCH}" -- .; then
+              echo "Branch ${HEAD_BRANCH} nao possui diferencas de conteudo em relacao a ${BASE_BRANCH}; PR nao sera criado."
+              exit 0
+            fi
+          else
+            echo "Branches ${BASE_BRANCH} e ${HEAD_BRANCH} ainda nao possuem merge base; seguindo para a verificacao de PR existente."
+          fi
+
+          existing_pr_url="$(find_existing_pr_url)"
+
+          if [[ -n "${existing_pr_url}" ]]; then
+            echo "Pull request ja existente: ${existing_pr_url}"
+            exit 0
+          fi
+
+          set +e
+          create_output="$(
+            gh pr create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base "${BASE_BRANCH}" \
+              --head "${head_ref}" \
+              --title "chore: promover develop para main" \
+              --body "PR aberto automaticamente apos as validacoes do workflow Deploy Lab passarem." \
+              2>&1
+          )"
+          create_status=$?
+          set -e
+
+          if [[ ${create_status} -eq 0 ]]; then
+            echo "${create_output}"
+            exit 0
+          fi
+
+          existing_pr_url="$(find_existing_pr_url)"
+
+          if [[ -n "${existing_pr_url}" ]]; then
+            echo "Pull request ja existente: ${existing_pr_url}"
+            exit 0
+          fi
+
+          if grep -q "A pull request already exists" <<<"${create_output}"; then
+            echo "Pull request ja existente para ${HEAD_BRANCH} -> ${BASE_BRANCH}."
+            exit 0
+          fi
+
+          echo "${create_output}" >&2
+          exit "${create_status}"

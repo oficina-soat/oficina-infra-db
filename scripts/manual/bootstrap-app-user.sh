@@ -3,23 +3,26 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+export REPO_ROOT
 
-TERRAFORM_DIR="${TERRAFORM_DIR:-${REPO_ROOT}/terraform/environments/lab}"
-AWS_REGION="${AWS_REGION:-us-east-1}"
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+TERRAFORM_DIR="${TERRAFORM_DIR:-${OFICINA_TERRAFORM_ENV_DIR}}"
+AWS_REGION="${AWS_REGION:-${OFICINA_AWS_REGION}}"
 MASTER_SECRET_ARN="${MASTER_SECRET_ARN:-}"
 DB_HOST="${DB_HOST:-}"
 DB_PORT="${DB_PORT:-}"
 DB_NAME="${DB_NAME:-}"
 MASTER_DB_USER="${MASTER_DB_USER:-}"
 MASTER_DB_PASSWORD="${MASTER_DB_PASSWORD:-}"
-APP_DB_USER="${APP_DB_USER:-oficina_app}"
+APP_DB_USER="${APP_DB_USER:-${OFICINA_APP_DB_USER}}"
 APP_DB_PASSWORD="${APP_DB_PASSWORD:-}"
 APP_DB_ALLOW_SCHEMA_CHANGES="${APP_DB_ALLOW_SCHEMA_CHANGES:-true}"
 APP_SECRET_NAME="${APP_SECRET_NAME:-}"
 APP_SECRET_KMS_KEY_ID="${APP_SECRET_KMS_KEY_ID:-}"
 STORE_IN_SECRETS_MANAGER="${STORE_IN_SECRETS_MANAGER:-false}"
-DB_SSLMODE="${DB_SSLMODE:-require}"
+DB_SSLMODE="${DB_SSLMODE:-${OFICINA_DB_SSLMODE}}"
 
 usage() {
   cat <<EOF
@@ -45,50 +48,6 @@ Variaveis suportadas:
 EOF
 }
 
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
-
-require_valid_secret_id() {
-  local value="$1"
-  local name="$2"
-
-  require_non_empty "${value}" "${name}"
-
-  if [[ "${value}" == *[[:space:]]* || "${value}" == *\"* || "${value}" == *"'"* ]]; then
-    echo "${name} invalido: contem espaco, quebra de linha ou aspas. Se o valor veio de terraform output no GitHub Actions, desative o terraform_wrapper do hashicorp/setup-terraform." >&2
-    exit 1
-  fi
-
-  if [[ ! "${value}" =~ ^arn:[A-Za-z0-9_+=,.@:/!-]+$ && ! "${value}" =~ ^[A-Za-z0-9/_+=.@!-]+$ ]]; then
-    echo "${name} invalido: informe um ARN ou nome de secret do AWS Secrets Manager." >&2
-    exit 1
-  fi
-}
-
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-read_tf_output() {
-  local output_name="$1"
-  if command -v terraform >/dev/null 2>&1 && [[ -d "${TERRAFORM_DIR}" ]]; then
-    terraform -chdir="${TERRAFORM_DIR}" output -raw "${output_name}" 2>/dev/null || true
-  fi
-}
-
 read_secret_json() {
   require_valid_secret_id "${MASTER_SECRET_ARN}" "MASTER_SECRET_ARN"
   require_cmd aws
@@ -98,12 +57,6 @@ read_secret_json() {
     --secret-id "${MASTER_SECRET_ARN}" \
     --query SecretString \
     --output text
-}
-
-read_secret_field() {
-  local secret_json="$1"
-  local field_name="$2"
-  jq -er --arg field_name "${field_name}" '.[$field_name] // empty' <<<"${secret_json}" 2>/dev/null || true
 }
 
 generate_password() {

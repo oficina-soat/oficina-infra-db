@@ -53,7 +53,7 @@ Antes de encerrar uma alteração, execute a validação compatível com o impac
 
 - `terraform fmt -check -recursive terraform`
 - `terraform -chdir=terraform/environments/lab validate` quando houver mudança em Terraform
-- `bash -n scripts/*.sh` quando houver mudança em scripts
+- `find scripts -type f -name '*.sh' -print0 | xargs -0 bash -n` quando houver mudança em scripts
 - validação das migrations ou do SQL alterado quando houver mudança em `sql/`
 
 Se alguma verificação depender de credenciais, backend inicializado, AWS, Docker ou outras dependências não disponíveis no ambiente, registre isso claramente na resposta final.
@@ -72,12 +72,12 @@ Comandos relevantes de Terraform:
 
 Comandos relevantes de scripts:
 
-- `./scripts/ci-terraform.sh`
-- `./scripts/ci-deploy.sh`
-- `./scripts/run-db-migrations.sh migrate`
-- `./scripts/run-rds-import.sh`
-- `./scripts/bootstrap-app-user.sh`
-- `./scripts/apply-k8s-secret.sh`
+- `./scripts/actions/ci-terraform.sh`
+- `./scripts/actions/ci-deploy.sh`
+- `./scripts/manual/run-db-migrations.sh migrate`
+- `./scripts/manual/run-rds-import.sh`
+- `./scripts/manual/bootstrap-app-user.sh`
+- `./scripts/manual/apply-k8s-secret.sh`
 
 ## Commits
 

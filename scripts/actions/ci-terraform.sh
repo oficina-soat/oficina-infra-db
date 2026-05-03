@@ -3,14 +3,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+export REPO_ROOT
 
-TERRAFORM_DIR="${TERRAFORM_DIR:-${REPO_ROOT}/terraform/environments/lab}"
-AWS_REGION="${AWS_REGION:-}"
-EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
-SHARED_INFRA_NAME="${SHARED_INFRA_NAME:-${EKS_CLUSTER_NAME}}"
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+TERRAFORM_DIR="${TERRAFORM_DIR:-${OFICINA_TERRAFORM_ENV_DIR}}"
+AWS_REGION="${AWS_REGION:-${OFICINA_AWS_REGION}}"
+EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-${OFICINA_EKS_CLUSTER_NAME}}"
+SHARED_INFRA_NAME="${SHARED_INFRA_NAME:-${OFICINA_SHARED_INFRA_NAME}}"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
-TF_STATE_KEY="${TF_STATE_KEY:-oficina/lab/database/terraform.tfstate}"
+TF_STATE_KEY="${TF_STATE_KEY:-${OFICINA_TF_STATE_KEY}}"
 TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
 TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE:-}"
 TERRAFORM_ACTION="${TERRAFORM_ACTION:-apply}"
@@ -27,35 +30,6 @@ cleanup() {
 
 trap cleanup EXIT
 
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
-
-unset_if_empty() {
-  local name="$1"
-
-  if [[ -v "${name}" && -z "${!name}" ]]; then
-    unset "${name}"
-  fi
-}
-
 normalize_optional_envs() {
   unset_if_empty "EKS_CLUSTER_NAME"
   unset_if_empty "SHARED_INFRA_NAME"
@@ -63,14 +37,30 @@ normalize_optional_envs() {
   unset_if_empty "TF_STATE_DYNAMODB_TABLE"
   unset_if_empty "TF_VAR_shared_infra_name"
   unset_if_empty "TF_VAR_eks_cluster_name"
+  unset_if_empty "TF_VAR_db_name"
+  unset_if_empty "TF_VAR_db_username"
+  unset_if_empty "TF_VAR_instance_class"
+  unset_if_empty "TF_VAR_engine_version"
+  unset_if_empty "TF_VAR_allocated_storage"
+  unset_if_empty "TF_VAR_max_allocated_storage"
+  unset_if_empty "TF_VAR_publicly_accessible"
+  unset_if_empty "TF_VAR_deletion_protection"
+  unset_if_empty "TF_VAR_skip_final_snapshot"
+  unset_if_empty "TF_VAR_final_snapshot_identifier"
   unset_if_empty "TF_VAR_vpc_id"
   unset_if_empty "TF_VAR_subnet_ids"
+  unset_if_empty "TF_VAR_create_network_if_missing"
+  unset_if_empty "TF_VAR_network_vpc_cidr"
   unset_if_empty "TF_VAR_azs"
   unset_if_empty "TF_VAR_public_subnet_cidrs"
   unset_if_empty "TF_VAR_allowed_security_group_ids"
   unset_if_empty "TF_VAR_allowed_cidr_blocks"
   unset_if_empty "TF_VAR_terraform_shared_data_bucket_name"
+  unset_if_empty "TF_VAR_terraform_shared_data_bucket_force_destroy"
+  unset_if_empty "TF_VAR_create_alarms"
   unset_if_empty "TF_VAR_enabled_cloudwatch_logs_exports"
+  unset_if_empty "TF_VAR_monitoring_interval"
+  unset_if_empty "TF_VAR_performance_insights_enabled"
   unset_if_empty "TF_VAR_tags"
 }
 
@@ -284,7 +274,7 @@ cleanup_missing_remote_state_existing_db_resources() {
   TF_STATE_BUCKET="${EFFECTIVE_TF_STATE_BUCKET}" \
   TF_STATE_KEY="${TF_STATE_KEY}" \
   TF_STATE_REGION="${TF_STATE_REGION}" \
-  bash "${REPO_ROOT}/scripts/cleanup-orphan-db.sh"
+  bash "${REPO_ROOT}/scripts/actions/cleanup-orphan-db.sh"
 }
 
 read_tf_output_raw() {
