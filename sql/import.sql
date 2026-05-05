@@ -4,7 +4,7 @@ INSERT INTO public.pessoa (documento, tipo_pessoa, nome, email) VALUES
     ('36655462007', 'FISICA', 'Mecanico Laboratorio', 'mecanico@oficina.com'),
     ('17245011010', 'FISICA', 'Recepcionista Laboratorio', 'recepcao@oficina.com'),
     ('50132372037', 'FISICA', 'Cliente Laboratorio 1', 'cliente1@oficina.com'),
-    ('12345678900', 'FISICA', 'Cliente Laboratorio 2', 'cliente2@oficina.com')
+    ('68996860077', 'FISICA', 'Cliente Laboratorio 2', 'cliente2@oficina.com')
 ON CONFLICT (documento) DO UPDATE SET
     tipo_pessoa = EXCLUDED.tipo_pessoa,
     nome = EXCLUDED.nome,
@@ -64,7 +64,7 @@ SELECT p.id,
 FROM (
     VALUES
         ('50132372037', 'cliente1@oficina.com'),
-        ('12345678900', 'cliente2@oficina.com')
+        ('68996860077', 'cliente2@oficina.com')
 ) AS seed(documento, email)
 JOIN public.pessoa p
   ON p.documento = seed.documento
@@ -97,7 +97,7 @@ FROM (
         ('4b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef'::uuid, '50132372037', 'ABC1234', '2025-12-14 17:28:14.714212 +00:00'::timestamptz, '2025-12-14 17:28:14.714212 +00:00'::timestamptz),
         ('6b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef'::uuid, '50132372037', 'ABC1234', '2025-12-14 17:28:14.714212 +00:00'::timestamptz, '2025-12-14 17:28:14.714212 +00:00'::timestamptz),
         ('7b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef'::uuid, '50132372037', 'ABC1234', '2025-12-14 17:28:14.714212 +00:00'::timestamptz, '2025-12-14 17:28:14.714212 +00:00'::timestamptz),
-        ('4298695b-d6ae-45ac-a659-c4de90f81eb4'::uuid, '12345678900', 'ABC1D23', '2026-01-17 10:00:00.000000 +00:00'::timestamptz, '2026-01-17 10:00:00.000000 +00:00'::timestamptz)
+        ('4298695b-d6ae-45ac-a659-c4de90f81eb4'::uuid, '68996860077', 'ABC1D23', '2026-01-17 10:00:00.000000 +00:00'::timestamptz, '2026-01-17 10:00:00.000000 +00:00'::timestamptz)
 ) AS seed(id, cliente_documento, veiculo_placa, criado_em, atualizado_em)
 JOIN public.cliente c
   ON c.documento = seed.cliente_documento
