@@ -187,12 +187,12 @@ variable "vpc_id" {
 
 variable "subnet_ids" {
   type        = list(string)
-  description = "Lista de sub-redes para o DB subnet group. Se vazia, o projeto tenta reutilizar as subnets da VPC compartilhada ou criar as proprias."
+  description = "Lista de sub-redes publicas para o DB subnet group. Se vazia, o projeto tenta reutilizar as subnets publicas tagueadas da VPC compartilhada ou criar as proprias."
   default     = []
 
   validation {
     condition     = length(var.subnet_ids) == 0 || length(var.subnet_ids) >= 2
-    error_message = "Informe pelo menos duas sub-redes para o subnet group do RDS."
+    error_message = "Informe pelo menos duas sub-redes publicas para o subnet group do RDS."
   }
 }
 

@@ -15,6 +15,16 @@ data "aws_subnets" "shared" {
     name   = "vpc-id"
     values = [local.existing_shared_vpc_id]
   }
+
+  filter {
+    name   = "tag:kubernetes.io/cluster/${local.resolved_eks_cluster_name}"
+    values = ["shared"]
+  }
+
+  filter {
+    name   = "tag:kubernetes.io/role/elb"
+    values = ["1"]
+  }
 }
 
 data "aws_security_groups" "eks_cluster" {
@@ -85,7 +95,7 @@ module "terraform_shared_data_bucket" {
 check "network_inputs" {
   assert {
     condition     = local.resolved_vpc_id != null && length(local.resolved_subnet_ids) >= 2
-    error_message = "Informe vpc_id e pelo menos duas subnet_ids, reutilize uma VPC nomeada como <shared_infra_name>-vpc, ou mantenha create_network_if_missing=true para criar a rede automaticamente."
+    error_message = "Informe vpc_id e pelo menos duas subnet_ids publicas, reutilize uma VPC nomeada como <shared_infra_name>-vpc com subnets publicas tagueadas para o cluster EKS, ou mantenha create_network_if_missing=true para criar a rede automaticamente."
   }
 }
 
