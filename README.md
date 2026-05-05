@@ -120,7 +120,7 @@ flowchart LR
 O root module resolve a infraestrutura nesta ordem:
 
 1. usa `vpc_id` e `subnet_ids` explícitos, se informados
-2. tenta reutilizar a VPC nomeada como `<shared_infra_name>-vpc`
+2. tenta reutilizar a VPC nomeada como `<shared_infra_name>-vpc`, usando apenas subnets públicas tagueadas para o cluster EKS
 3. se não encontrar a VPC e `create_network_if_missing=true`, cria uma rede nova com os mesmos nomes usados no repo k8s
 
 Para acesso do EKS ao banco, o projeto tenta reutilizar security groups tagueados com `aws:eks:cluster-name=<eks_cluster_name>`. Se eles não existirem, informe `allowed_security_group_ids` ou `allowed_cidr_blocks`.
@@ -139,7 +139,7 @@ Campos principais:
 - `eks_cluster_name`: nome do cluster EKS compartilhado. Default `eks-lab`
 - `db_identifier`: default `oficina-postgres-lab`
 - `create_network_if_missing`: cria a rede do lab se ela ainda não existir
-- `vpc_id` e `subnet_ids`: forçam uso de rede específica
+- `vpc_id` e `subnet_ids`: forçam uso de rede específica; para acesso público ao RDS, use subnets públicas com rota para Internet Gateway
 - `allowed_security_group_ids` e `allowed_cidr_blocks`: controlam quem acessa a porta `5432`
 - `create_terraform_shared_data_bucket`: só deve ficar `true` quando este state for gerenciar o bucket compartilhado
 
