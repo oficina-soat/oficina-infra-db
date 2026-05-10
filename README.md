@@ -193,9 +193,10 @@ Nos GitHub Actions, o destroy faz verificações extras antes de continuar:
 Workflows disponíveis:
 
 - `.github/workflows/deploy-lab.yml`
+- `.github/workflows/open-pr-to-main.yml`
 - `.github/workflows/destroy-lab.yml`
 
-Todos usam o GitHub Environment `lab` e um grupo de `concurrency` próprio do banco, mantendo a mesma organização do repo `oficina-infra-k8s` sem acoplar a execução entre repositórios.
+Os workflows que operam infraestrutura usam o GitHub Environment `lab` e um grupo de `concurrency` próprio do banco, mantendo a mesma organização do repo `oficina-infra-k8s` sem acoplar a execução entre repositórios. O `Open PR To Main` roda separado do deploy, valida `develop` e cria ou atualiza o PR para `main`.
 
 Detalhes de variáveis e secrets: [docs/github-actions.md](docs/github-actions.md)
 
