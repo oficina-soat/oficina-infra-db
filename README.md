@@ -199,6 +199,7 @@ Workflows disponíveis:
 Os workflows que operam infraestrutura usam o GitHub Environment `lab` e um grupo de `concurrency` próprio do banco, mantendo a mesma organização do repo `oficina-infra-k8s`. O `Open PR To Main` roda separado do deploy, valida `develop` e cria ou atualiza o PR para `main`.
 
 Ao final do `Deploy Lab` bem-sucedido, o workflow dispara os deploys assíncronos do `oficina-auth-lambda` para as duas Lambdas e do `oficina-app`, sem aguardar o resultado desses workflows.
+Para o disparo cross-repo funcionar, configure `OFICINA_WORKFLOW_TOKEN` ou os tokens específicos descritos em [docs/github-actions.md](docs/github-actions.md) com permissão de escrita em Actions nos repositórios alvo.
 
 Detalhes de variáveis e secrets: [docs/github-actions.md](docs/github-actions.md)
 

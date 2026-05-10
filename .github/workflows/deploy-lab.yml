@@ -149,26 +149,28 @@ jobs:
         run: bash ./scripts/actions/ci-deploy.sh
 
       - name: Trigger oficina lambda deploy
-        continue-on-error: true
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.OFICINA_LAMBDA_WORKFLOW_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.OFICINA_LAMBDA_WORKFLOW_TOKEN || secrets.OFICINA_WORKFLOW_TOKEN || github.token }}
           OFICINA_LAMBDA_REPOSITORY: ${{ vars.OFICINA_LAMBDA_REPOSITORY || format('{0}/oficina-auth-lambda', github.repository_owner) }}
           OFICINA_LAMBDA_WORKFLOW_REF: ${{ vars.OFICINA_LAMBDA_WORKFLOW_REF || 'main' }}
         run: |
-          gh workflow run deploy-lambda-lab.yml \
+          if ! gh workflow run deploy-lambda-lab.yml \
             --repo "${OFICINA_LAMBDA_REPOSITORY}" \
             --ref "${OFICINA_LAMBDA_WORKFLOW_REF}" \
-            --field lambda_target=all
+            --field lambda_target=all; then
+            echo "::warning::Nao foi possivel disparar deploy-lambda-lab.yml em ${OFICINA_LAMBDA_REPOSITORY}. Configure OFICINA_LAMBDA_WORKFLOW_TOKEN ou OFICINA_WORKFLOW_TOKEN com permissao de Actions write no repositorio alvo."
+          fi
 
       - name: Trigger oficina app deploy
-        continue-on-error: true
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.OFICINA_APP_WORKFLOW_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.OFICINA_APP_WORKFLOW_TOKEN || secrets.OFICINA_WORKFLOW_TOKEN || github.token }}
           OFICINA_APP_REPOSITORY: ${{ vars.OFICINA_APP_REPOSITORY || format('{0}/oficina-app', github.repository_owner) }}
           OFICINA_APP_WORKFLOW_REF: ${{ vars.OFICINA_APP_WORKFLOW_REF || 'main' }}
         run: |
-          gh workflow run deploy-app-lab.yml \
+          if ! gh workflow run deploy-app-lab.yml \
             --repo "${OFICINA_APP_REPOSITORY}" \
-            --ref "${OFICINA_APP_WORKFLOW_REF}"
+            --ref "${OFICINA_APP_WORKFLOW_REF}"; then
+            echo "::warning::Nao foi possivel disparar deploy-app-lab.yml em ${OFICINA_APP_REPOSITORY}. Configure OFICINA_APP_WORKFLOW_TOKEN ou OFICINA_WORKFLOW_TOKEN com permissao de Actions write no repositorio alvo."
+          fi

@@ -86,8 +86,11 @@ Usadas só no `Deploy Lab`:
 Secret opcional do `Deploy Lab`:
 
 - `APP_DB_PASSWORD`
-- `OFICINA_LAMBDA_WORKFLOW_TOKEN`: token usado para disparar o workflow do repositório das Lambdas quando o `GITHUB_TOKEN` deste repositório não tiver acesso ao repo alvo
-- `OFICINA_APP_WORKFLOW_TOKEN`: token usado para disparar o workflow do repositório da aplicação quando o `GITHUB_TOKEN` deste repositório não tiver acesso ao repo alvo
+- `OFICINA_WORKFLOW_TOKEN`: token compartilhado para disparar workflows nos repositórios `oficina-auth-lambda` e `oficina-app`
+- `OFICINA_LAMBDA_WORKFLOW_TOKEN`: token específico para disparar o workflow do repositório das Lambdas
+- `OFICINA_APP_WORKFLOW_TOKEN`: token específico para disparar o workflow do repositório da aplicação
+
+O `GITHUB_TOKEN` deste repositório normalmente não tem permissão para criar `workflow_dispatch` em outros repositórios. Para que os deploys encadeados sejam disparados de fato, configure `OFICINA_WORKFLOW_TOKEN` ou os tokens específicos com permissão de escrita em Actions nos repositórios alvo.
 
 ## Estado remoto
 
@@ -121,7 +124,7 @@ A carga `sql/import.sql` e seed de laboratório e roda automaticamente no deploy
 
 ## Deploys encadeados
 
-Ao final do deploy bem-sucedido do banco, o `Deploy Lab` dispara, via `workflow_dispatch`, o `deploy-lambda-lab.yml` do repositório `oficina-auth-lambda` com `lambda_target=all` e o `deploy-app-lab.yml` do repositório `oficina-app`. Esses disparos apenas iniciam os workflows remotos; este repositório não espera a conclusão deles e falhas no disparo não derrubam o deploy do banco.
+Ao final do deploy bem-sucedido do banco, o `Deploy Lab` dispara, via `workflow_dispatch`, o `deploy-lambda-lab.yml` do repositório `oficina-auth-lambda` com `lambda_target=all` e o `deploy-app-lab.yml` do repositório `oficina-app`. Esses disparos apenas iniciam os workflows remotos; este repositório não espera a conclusão deles. Falhas no disparo viram warning e não derrubam o deploy do banco.
 
 ## Guardas destrutivas
 
