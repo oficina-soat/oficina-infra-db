@@ -78,10 +78,16 @@ Usadas só no `Deploy Lab`:
 - `APPLY_K8S_SECRET`
 - `K8S_NAMESPACE`
 - `K8S_SECRET_NAME`
+- `OFICINA_LAMBDA_REPOSITORY`: default `<owner>/oficina-auth-lambda`
+- `OFICINA_LAMBDA_WORKFLOW_REF`: default `main`
+- `OFICINA_APP_REPOSITORY`: default `<owner>/oficina-app`
+- `OFICINA_APP_WORKFLOW_REF`: default `main`
 
 Secret opcional do `Deploy Lab`:
 
 - `APP_DB_PASSWORD`
+- `OFICINA_LAMBDA_WORKFLOW_TOKEN`: token usado para disparar o workflow do repositório das Lambdas quando o `GITHUB_TOKEN` deste repositório não tiver acesso ao repo alvo
+- `OFICINA_APP_WORKFLOW_TOKEN`: token usado para disparar o workflow do repositório da aplicação quando o `GITHUB_TOKEN` deste repositório não tiver acesso ao repo alvo
 
 ## Estado remoto
 
@@ -112,6 +118,10 @@ Como o Flyway roda no runner do GitHub Actions, o deploy adiciona automaticament
 Quando o schema já existe porque foi criado anteriormente pelo Hibernate/Quarkus da aplicação principal, `FLYWAY_BASELINE_ON_MIGRATE=true` cria um baseline na versão `1` e ainda aplica as próximas migrations, começando pela `V2__create_auth_schema.sql`. Em bancos vazios, a `V1__create_app_schema.sql` e a `V2__create_auth_schema.sql` são aplicadas normalmente.
 
 A carga `sql/import.sql` e seed de laboratório e roda automaticamente no deploy quando `RUN_DB_IMPORT=true`. O arquivo usa upserts para poder ser reexecutado no ambiente lab.
+
+## Deploys encadeados
+
+Ao final do deploy bem-sucedido do banco, o `Deploy Lab` dispara, via `workflow_dispatch`, o `deploy-lambda-lab.yml` do repositório `oficina-auth-lambda` com `lambda_target=all` e o `deploy-app-lab.yml` do repositório `oficina-app`. Esses disparos apenas iniciam os workflows remotos; este repositório não espera a conclusão deles e falhas no disparo não derrubam o deploy do banco.
 
 ## Guardas destrutivas
 
