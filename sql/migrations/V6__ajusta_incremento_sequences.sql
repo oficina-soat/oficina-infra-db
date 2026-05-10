@@ -1,0 +1,11 @@
+ALTER SEQUENCE public.cliente_seq INCREMENT BY 1;
+ALTER SEQUENCE public.estado_ordem_servico_seq INCREMENT BY 1;
+ALTER SEQUENCE public.estoque_movimento_seq INCREMENT BY 1;
+ALTER SEQUENCE public.os_item_peca_seq INCREMENT BY 1;
+ALTER SEQUENCE public.os_item_servico_seq INCREMENT BY 1;
+ALTER SEQUENCE public.peca_seq INCREMENT BY 1;
+ALTER SEQUENCE public.servico_seq INCREMENT BY 1;
+ALTER SEQUENCE public.veiculo_seq INCREMENT BY 1;
+ALTER SEQUENCE public.papel_seq INCREMENT BY 1;
+ALTER SEQUENCE public.pessoa_seq INCREMENT BY 1;
+ALTER SEQUENCE public.usuario_seq INCREMENT BY 1;
