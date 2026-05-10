@@ -3,19 +3,20 @@
 O repositório usa a mesma família de workflows do `oficina-infra-k8s`, mas operando apenas sobre a infraestrutura do banco:
 
 - `./.github/workflows/deploy-lab.yml`
+- `./.github/workflows/open-pr-to-main.yml`
 - `./.github/workflows/destroy-lab.yml`
 
 ## Gatilho
 
+- `push` na `develop` para validação e abertura ou atualização automática de PR para `main` pelo `Open PR To Main`
 - `push` na `main` para deploy pelo `Deploy Lab`
-- `push` na `develop` para validação e abertura automática de PR para `main`
-- `workflow_dispatch` para execução manual
+- `workflow_dispatch` para execução manual do `Deploy Lab` ou `Destroy Lab`
 
-Todos usam o GitHub Environment `lab`.
+Os workflows que operam infraestrutura na AWS usam o GitHub Environment `lab`. O `Open PR To Main` não usa environment porque só valida o repositório e gerencia o pull request.
 
 Os jobs/workflows que alteram infraestrutura compartilham o mesmo grupo de `concurrency` deste repo, então `deploy`, `destroy` e cleanup de órfãos não executam em paralelo no mesmo ambiente.
 
-No `Deploy Lab`, pushes na `develop` executam validações de shell e Terraform. Quando elas passam, o workflow cria automaticamente um pull request da `develop` para `main`, caso ainda não exista. O deploy de infraestrutura continua limitado a push na `main` ou execução manual por `workflow_dispatch`.
+No `Open PR To Main`, pushes na `develop` executam validações de shell e Terraform. Quando elas passam, o workflow cria ou atualiza automaticamente um pull request da `develop` para `main`. O deploy de infraestrutura fica no workflow separado `Deploy Lab`, limitado a push na `main` ou execução manual por `workflow_dispatch`.
 
 ## Secrets obrigatórios
 

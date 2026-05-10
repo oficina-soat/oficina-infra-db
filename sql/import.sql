@@ -1,14 +1,13 @@
 -- noinspection SqlResolve
-INSERT INTO public.pessoa (documento, tipo_pessoa, nome, email) VALUES
-    ('84191404067', 'FISICA', 'Administrador Laboratorio', 'admin@oficina.com'),
-    ('36655462007', 'FISICA', 'Mecanico Laboratorio', 'mecanico@oficina.com'),
-    ('17245011010', 'FISICA', 'Recepcionista Laboratorio', 'recepcao@oficina.com'),
-    ('50132372037', 'FISICA', 'Cliente Laboratorio 1', 'cliente1@oficina.com'),
-    ('68996860077', 'FISICA', 'Cliente Laboratorio 2', 'cliente2@oficina.com')
+INSERT INTO public.pessoa (documento, tipo_pessoa, nome) VALUES
+    ('84191404067', 'FISICA', 'Administrador Laboratorio'),
+    ('36655462007', 'FISICA', 'Mecanico Laboratorio'),
+    ('17245011010', 'FISICA', 'Recepcionista Laboratorio'),
+    ('50132372037', 'FISICA', 'Cliente Laboratorio 1'),
+    ('68996860077', 'FISICA', 'Cliente Laboratorio 2')
 ON CONFLICT (documento) DO UPDATE SET
     tipo_pessoa = EXCLUDED.tipo_pessoa,
-    nome = EXCLUDED.nome,
-    email = EXCLUDED.email;
+    nome = EXCLUDED.nome;
 SELECT setval('pessoa_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM public.pessoa), 1), true);
 
 INSERT INTO public.papel (nome) VALUES
@@ -57,9 +56,8 @@ JOIN public.papel p
 ON CONFLICT (usuario_id, papel_id) DO NOTHING;
 
 -- noinspection SqlResolve
-INSERT INTO public.cliente (pessoa_id, documento, email)
+INSERT INTO public.cliente (pessoa_id, email)
 SELECT p.id,
-       seed.documento,
        seed.email
 FROM (
     VALUES
@@ -68,8 +66,7 @@ FROM (
 ) AS seed(documento, email)
 JOIN public.pessoa p
   ON p.documento = seed.documento
-ON CONFLICT (documento) DO UPDATE SET
-    pessoa_id = EXCLUDED.pessoa_id,
+ON CONFLICT (pessoa_id) DO UPDATE SET
     email = EXCLUDED.email;
 SELECT setval('cliente_seq', GREATEST((SELECT COALESCE(MAX(id), 0) FROM public.cliente), 1), true);
 
@@ -99,8 +96,10 @@ FROM (
         ('7b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef'::uuid, '50132372037', 'ABC1234', '2025-12-14 17:28:14.714212 +00:00'::timestamptz, '2025-12-14 17:28:14.714212 +00:00'::timestamptz),
         ('4298695b-d6ae-45ac-a659-c4de90f81eb4'::uuid, '68996860077', 'ABC1D23', '2026-01-17 10:00:00.000000 +00:00'::timestamptz, '2026-01-17 10:00:00.000000 +00:00'::timestamptz)
 ) AS seed(id, cliente_documento, veiculo_placa, criado_em, atualizado_em)
+JOIN public.pessoa pessoa_cliente
+  ON pessoa_cliente.documento = seed.cliente_documento
 JOIN public.cliente c
-  ON c.documento = seed.cliente_documento
+  ON c.pessoa_id = pessoa_cliente.id
 JOIN public.veiculo v
   ON v.placa = seed.veiculo_placa
 ON CONFLICT (id) DO UPDATE SET

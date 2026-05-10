@@ -2,7 +2,7 @@
 
 ## 1. Objetivo
 
-Este documento formaliza a justificativa para a adoção de banco de dados relacional na solução da Oficina e descreve a evolução do modelo de dados a partir da `V1__create_app_schema.sql`, com ênfase nos ajustes consolidados pela `V4__link_cliente_to_pessoa.sql`.
+Este documento formaliza a justificativa para a adoção de banco de dados relacional na solução da Oficina e descreve a evolução do modelo de dados a partir da `V1__create_app_schema.sql`, assumindo como schema atual o estado consolidado pela `V5__remove_campos_sombreados_cliente_pessoa.sql`.
 
 O objetivo central das migrations analisadas foi atender a dois requisitos simultâneos:
 
@@ -187,11 +187,11 @@ As principais limitações são:
 
 Em outras palavras, a V1 é consistente para o domínio de atendimento isolado, mas não é o melhor formato para um ecossistema com autenticação e múltiplos perfis ligados à mesma pessoa.
 
-## 4. Justificativa dos Ajustes Introduzidos até a V4
+## 4. Justificativa dos Ajustes Introduzidos até a V5
 
 A `V4__link_cliente_to_pessoa.sql` consolida a principal evolução conceitual do modelo: a separação entre identidade civil e papel de negócio.
 
-Na prática, a migration transforma `pessoa` na entidade canônica de identidade e reposiciona `cliente` como uma especialização dessa pessoa no contexto de atendimento.
+Na prática, a migration transforma `pessoa` na entidade canônica de identidade e reposiciona `cliente` como uma especialização dessa pessoa no contexto de atendimento. A `V5__remove_campos_sombreados_cliente_pessoa.sql` completa essa evolução ao remover os campos duplicados que existiam apenas para transição.
 
 ### 4.1. Problema endereçado
 
@@ -203,7 +203,7 @@ Antes do ajuste, o domínio possuía duas linhas de representação potencialmen
 Sem um vínculo formal entre elas, surgem riscos objetivos:
 
 - duplicidade cadastral;
-- divergência entre documento/e-mail em tabelas diferentes;
+- divergência entre documento e dados cadastrais em tabelas diferentes;
 - dificuldade para compartilhar identidade entre aplicação e lambda;
 - aumento do custo de manutenção de regras de negócio e integrações.
 
@@ -215,18 +215,19 @@ A decisão adotada foi:
 2. classificar a identidade com `tipo_pessoa`;
 3. vincular `cliente` a `pessoa` por relação `1:1`;
 4. preservar temporariamente `documento` e `email` em `cliente` para compatibilidade;
-5. usar trigger de sincronização durante a transição.
+5. usar trigger de sincronização durante a transição;
+6. remover, na V5, `cliente.documento` e `pessoa.email`, deixando cada dado no seu agregado canônico.
 
 Essa solução é mais correta do que manter dois cadastros independentes, porque separa:
 
-- o que a pessoa "e" do ponto de vista cadastral (`pessoa`);
+- o que a pessoa é do ponto de vista cadastral (`pessoa`);
 - o papel que ela exerce em um processo específico (`cliente`);
 - o vínculo dela com autenticação (`usuario`);
 - o conjunto de autorizações (`papel` e `usuario_papel`).
 
 ### 4.3. Ajustes estruturais relevantes da V4
 
-Os principais ajustes aplicados são:
+Os principais ajustes aplicados pela V4 foram:
 
 - criação de `dominio_tipo_pessoa`;
 - inclusão de `tipo_pessoa`, `nome` e `email` em `pessoa`;
@@ -238,9 +239,21 @@ Os principais ajustes aplicados são:
 - validação para impedir `usuario` ligado a pessoa jurídica;
 - trigger `trg_cliente_sync_pessoa` para sincronização transitória.
 
+### 4.4. Consolidação contratual da V5
+
+A V5 assume o modelo já migrado como contrato atual do banco. Com isso:
+
+- `pessoa.documento` passa a ser a única fonte do documento;
+- `cliente.documento` é removido;
+- `cliente.email` permanece como dado próprio do contato de atendimento;
+- `pessoa.email` é removido porque não é necessário para a identidade canônica;
+- a trigger `trg_cliente_sync_pessoa` e a função `fn_sync_cliente_pessoa` deixam de existir, pois a sincronização transitória não é mais parte do schema atual.
+
+Essa contração reduz ambiguidade operacional: buscar um cliente por documento exige atravessar `cliente.pessoa_id -> pessoa.id`, enquanto o e-mail usado pelo atendimento permanece diretamente em `cliente`.
+
 ## 5. Diagrama ER do Modelo Ajustado
 
-O diagrama abaixo resume o modelo relacional relevante após os ajustes da V4, considerando a base criada na V1 e as estruturas de identidade e autenticação incorporadas nas migrations seguintes.
+O diagrama abaixo resume o modelo relacional relevante no schema atual, após a V5, considerando a base criada na V1 e as estruturas de identidade e autenticação incorporadas nas migrations seguintes.
 
 ```mermaid
 erDiagram
@@ -254,13 +267,11 @@ erDiagram
         varchar documento UK
         varchar tipo_pessoa FK
         varchar nome
-        varchar email
     }
 
     CLIENTE {
         bigint id PK
         bigint pessoa_id
-        varchar documento UK
         varchar email UK
     }
 
@@ -373,7 +384,7 @@ Cada `cliente` deve estar vinculado a exatamente uma `pessoa`, e cada `pessoa` p
 - `FOREIGN KEY` para `pessoa(id)`;
 - `UNIQUE (pessoa_id)`.
 
-Essa escolha elimina a duplicidade conceitual de identidade e permite que o cliente seja tratado como papel de negócio, não como cadastro raiz isolado.
+Essa escolha elimina a duplicidade conceitual de identidade e permite que o cliente seja tratado como papel de negócio, não como cadastro raiz isolado. No schema atual, o documento do cliente é obtido pela relação com `pessoa`, e não por uma coluna própria em `cliente`.
 
 ### 6.2. `pessoa` -> `usuario` (`1:0..1`)
 
@@ -382,7 +393,7 @@ Uma `pessoa` pode ou não possuir um `usuario`. Quando existe, o vínculo é ún
 - pessoas cadastradas apenas para atendimento;
 - pessoas com acesso autenticado ao sistema.
 
-Além disso, a V4 valida que `usuario` só pode estar associado a pessoa física, preservando coerência com o processo de autenticação individual.
+Além disso, a V4 valida que `usuario` só pode estar associado a pessoa física, preservando coerência com o processo de autenticação individual. A V5 mantém esse contrato e remove apenas o campo `pessoa.email`, que não participa dessa identidade autenticável.
 
 ### 6.3. `usuario` <-> `papel` (`N:N`)
 
@@ -419,11 +430,11 @@ Nem todo movimento de estoque nasce de uma ordem, mas uma ordem pode originar v�
 
 ## 7. Fundamentação dos Ajustes no Modelo Relacional
 
-Os ajustes realizados até a V4 se justificam formalmente por quatro ganhos principais.
+Os ajustes realizados até a V5 se justificam formalmente por quatro ganhos principais.
 
 ### 7.1. Normalização da identidade
 
-Ao mover a identidade canônica para `pessoa`, o modelo reduz redundância lógica e cria um ponto único para documento, classificação e dados cadastrais compartilhados.
+Ao mover a identidade canônica para `pessoa`, o modelo reduz redundância lógica e cria um ponto único para documento, classificação e dados cadastrais compartilhados. A V5 completa essa normalização removendo `cliente.documento`, que era sombra de `pessoa.documento`, e removendo `pessoa.email`, que não era necessário para a identidade.
 
 ### 7.2. Reuso entre subdomínios
 
@@ -439,12 +450,14 @@ Esse reuso diminui divergência entre serviços e melhora a consistência entre 
 
 A V4 não foi desenhada como corte abrupto. Ela faz backfill, valida pré-condições, cria vínculos formais e mantém sincronização transitória. Isso é tecnicamente relevante porque o banco é compartilhado por múltiplos consumidores e a migração precisava preservar continuidade operacional.
 
+A V5 representa a etapa de contração desse fluxo: remove os campos transitórios e a lógica de sincronização, assumindo que o contrato vigente é `cliente.pessoa_id` para identidade e `cliente.email` para contato de atendimento.
+
 ### 7.4. Preparação para evolução futura
 
-Com `pessoa` como raiz de identidade, o modelo fica mais preparado para novos perfis de negócio, como representantes, operadores ou responsáveis legais, sem exigir nova duplicação estrutural de documento e e-mail.
+Com `pessoa` como raiz de identidade, o modelo fica mais preparado para novos perfis de negócio, como representantes, operadores ou responsáveis legais, sem exigir nova duplicação estrutural de documento. Dados de contato específicos de um papel devem permanecer na tabela do respectivo papel, como ocorre com `cliente.email`.
 
 ## 8. Conclusão
 
 A escolha por PostgreSQL foi correta porque o problema tratado é essencialmente relacional, transacional e dependente de integridade forte. A `V1` já refletia esse acerto ao estruturar atendimento, composição de ordens e estoque em entidades relacionadas.
 
-Os ajustes consolidados pela `V4` representam uma evolução necessária do modelo. Eles mantêm a base operacional da V1, mas introduzem uma camada de identidade mais consistente, reutilizável e alinhada à autenticação. Com isso, o banco passa a refletir melhor o domínio real da solução: uma mesma pessoa pode participar do sistema em papéis distintos, e esses papéis precisam coexistir sem duplicidade cadastral nem perda de integridade.
+Os ajustes consolidados até a `V5` representam uma evolução necessária do modelo. Eles mantêm a base operacional da V1, introduzem uma camada de identidade mais consistente e encerram a fase transitória de campos sombreados entre `cliente` e `pessoa`. Com isso, o banco passa a refletir melhor o domínio real da solução: uma mesma pessoa pode participar do sistema em papéis distintos, e esses papéis precisam coexistir sem duplicidade cadastral nem perda de integridade.
