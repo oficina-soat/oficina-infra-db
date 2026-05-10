@@ -196,7 +196,9 @@ Workflows disponíveis:
 - `.github/workflows/open-pr-to-main.yml`
 - `.github/workflows/destroy-lab.yml`
 
-Os workflows que operam infraestrutura usam o GitHub Environment `lab` e um grupo de `concurrency` próprio do banco, mantendo a mesma organização do repo `oficina-infra-k8s` sem acoplar a execução entre repositórios. O `Open PR To Main` roda separado do deploy, valida `develop` e cria ou atualiza o PR para `main`.
+Os workflows que operam infraestrutura usam o GitHub Environment `lab` e um grupo de `concurrency` próprio do banco, mantendo a mesma organização do repo `oficina-infra-k8s`. O `Open PR To Main` roda separado do deploy, valida `develop` e cria ou atualiza o PR para `main`.
+
+Ao final do `Deploy Lab` bem-sucedido, o workflow dispara os deploys assíncronos do `oficina-auth-lambda` para as duas Lambdas e do `oficina-app`, sem aguardar o resultado desses workflows.
 
 Detalhes de variáveis e secrets: [docs/github-actions.md](docs/github-actions.md)
 
