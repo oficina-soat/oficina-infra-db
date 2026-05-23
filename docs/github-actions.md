@@ -6,6 +6,13 @@ O repositório usa a mesma família de workflows do `oficina-infra-k8s`, mas ope
 - `./.github/workflows/open-pr-to-main.yml`
 - `./.github/workflows/destroy-lab.yml`
 
+No fluxo principal da suíte, este workflow é iniciado pelo `Deploy Lab` do `../oficina-infra-k8s`. Depois de aplicar o banco, migrations e seed, este repositório dispara os deploys do `oficina-auth-lambda` e do `oficina-app`. Para validar o resultado completo, rode o teste principal no `oficina-app`:
+
+```bash
+cd ../oficina-app
+MODO_ACESSO=aws ./scripts/validar-metricas-paineis.sh
+```
+
 ## Gatilho
 
 - `push` na `develop` para validação e abertura ou atualização automática de PR para `main` pelo `Open PR To Main`

@@ -1,5 +1,22 @@
 # oficina-db-infra
 
+## Deploy e teste da suíte
+
+O deploy integrado não deve começar por este repositório. Execute o procedimento principal pelo repositório `../oficina-infra-k8s`:
+
+```text
+oficina-infra-k8s -> Actions -> Deploy Lab -> Run workflow
+```
+
+O `Deploy Lab` do `oficina-infra-k8s` aplica a infraestrutura AWS e Kubernetes e dispara o `deploy-lab.yml` deste repositório. Este deploy aplica RDS, migrations e seed e, ao final, dispara automaticamente o `deploy-lambda-lab.yml` do `oficina-auth-lambda` e o `deploy-app-lab.yml` do `oficina-app`. Use o `Deploy Lab` deste repositório diretamente apenas para manutenção específica do banco.
+
+Depois que todos os workflows terminarem, o teste principal deve ser executado no repositório `../oficina-app`:
+
+```bash
+cd ../oficina-app
+MODO_ACESSO=aws ./scripts/validar-metricas-paineis.sh
+```
+
 Infraestrutura AWS/Terraform da base PostgreSQL da Oficina.
 
 O repositório foi alinhado com `oficina-infra-k8s` para usar os mesmos nomes de infra compartilhada do laboratório e a mesma família de GitHub Actions, mas continua independente:
