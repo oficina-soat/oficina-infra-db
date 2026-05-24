@@ -1,5 +1,19 @@
 # oficina-db-infra
 
+## Propósito
+
+Infraestrutura AWS/Terraform da base PostgreSQL da Oficina. Este repositório provisiona ou reutiliza a rede do laboratório, cria o RDS, gerencia parâmetros e segurança do banco, executa migrations/seed e publica o secret Kubernetes usado pelo `oficina-app`.
+
+## Tecnologias utilizadas
+
+- Terraform `>= 1.6`
+- AWS Provider para VPC, RDS PostgreSQL, Secrets Manager, S3, CloudWatch e IAM
+- PostgreSQL 16 para operações e imagem auxiliar `postgres:16-alpine`
+- Flyway 12.4 para migrations SQL
+- Bash, AWS CLI, Docker e kubectl
+- GitHub Actions para deploy, destroy e promoção `develop -> main`
+- SQL versionado em `sql/migrations` e seed de laboratório em `sql/import.sql`
+
 ## Deploy e teste da suíte
 
 O deploy integrado não deve começar por este repositório. Execute o procedimento principal pelo repositório `../oficina-infra-k8s`:
@@ -31,6 +45,16 @@ O repositório foi alinhado com `oficina-infra-k8s` para usar os mesmos nomes de
 - security group, subnet group e parameter group do banco
 - VPC/subnets do lab quando a rede compartilhada ainda não existir
 - bucket S3 compartilhado do Terraform quando ele precisar ser criado por este state
+
+## Swagger, OpenAPI e Postman
+
+Este repositório não expõe API HTTP própria; ele entrega banco, migrations e secrets consumidos pelas APIs da suíte. Use os links abaixo para a documentação das APIs que dependem desta infraestrutura:
+
+- API principal local: `http://localhost:8080/q/swagger-ui/`
+- OpenAPI principal local: `http://localhost:8080/q/openapi`
+- API principal no lab: `<oficina_app_public_base_url>/q/swagger-ui/`
+- Auth/JWKS no lab: `<OFICINA_AUTH_ISSUER>/.well-known/openid-configuration` e `<OFICINA_AUTH_ISSUER>/.well-known/jwks.json`
+- Não há coleção Postman versionada neste repositório; importe o OpenAPI do `oficina-app` no Postman quando necessário.
 
 ## Diagrama de serviços
 
