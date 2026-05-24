@@ -1,5 +1,36 @@
 # oficina-db-infra
 
+## Propósito
+
+Infraestrutura AWS/Terraform da base PostgreSQL da Oficina. Este repositório provisiona ou reutiliza a rede do laboratório, cria o RDS, gerencia parâmetros e segurança do banco, executa migrations/seed e publica o secret Kubernetes usado pelo `oficina-app`.
+
+## Tecnologias utilizadas
+
+- Terraform `>= 1.6`
+- AWS Provider para VPC, RDS PostgreSQL, Secrets Manager, S3, CloudWatch e IAM
+- PostgreSQL 16 para operações e imagem auxiliar `postgres:16-alpine`
+- Flyway 12.4 para migrations SQL
+- Bash, AWS CLI, Docker e kubectl
+- GitHub Actions para deploy, destroy e promoção `develop -> main`
+- SQL versionado em `sql/migrations` e seed de laboratório em `sql/import.sql`
+
+## Deploy e teste da suíte
+
+O deploy integrado não deve começar por este repositório. Execute o procedimento principal pelo repositório `../oficina-infra-k8s`:
+
+```text
+oficina-infra-k8s -> Actions -> Deploy Lab -> Run workflow
+```
+
+O `Deploy Lab` do `oficina-infra-k8s` aplica a infraestrutura AWS e Kubernetes e dispara o `deploy-lab.yml` deste repositório. Este deploy aplica RDS, migrations e seed e, ao final, dispara automaticamente o `deploy-lambda-lab.yml` do `oficina-auth-lambda` e o `deploy-app-lab.yml` do `oficina-app`. Use o `Deploy Lab` deste repositório diretamente apenas para manutenção específica do banco.
+
+Depois que todos os workflows terminarem, o teste principal deve ser executado no repositório `../oficina-app`:
+
+```bash
+cd ../oficina-app
+MODO_ACESSO=aws ./scripts/validar-metricas-paineis.sh
+```
+
 Infraestrutura AWS/Terraform da base PostgreSQL da Oficina.
 
 O repositório foi alinhado com `oficina-infra-k8s` para usar os mesmos nomes de infra compartilhada do laboratório e a mesma família de GitHub Actions, mas continua independente:
@@ -14,6 +45,16 @@ O repositório foi alinhado com `oficina-infra-k8s` para usar os mesmos nomes de
 - security group, subnet group e parameter group do banco
 - VPC/subnets do lab quando a rede compartilhada ainda não existir
 - bucket S3 compartilhado do Terraform quando ele precisar ser criado por este state
+
+## Swagger, OpenAPI e Postman
+
+Este repositório não expõe API HTTP própria; ele entrega banco, migrations e secrets consumidos pelas APIs da suíte. Use os links abaixo para a documentação das APIs que dependem desta infraestrutura:
+
+- API principal local: `http://localhost:8080/q/swagger-ui/`
+- OpenAPI principal local: `http://localhost:8080/q/openapi`
+- API principal no lab: `<oficina_app_public_base_url>/q/swagger-ui/`
+- Auth/JWKS no lab: `<OFICINA_AUTH_ISSUER>/.well-known/openid-configuration` e `<OFICINA_AUTH_ISSUER>/.well-known/jwks.json`
+- Não há coleção Postman versionada neste repositório; importe o OpenAPI do `oficina-app` no Postman quando necessário.
 
 ## Diagrama de serviços
 
